@@ -19,4 +19,7 @@ def get_config() -> dict:
         "stem_names": list(STEM_NAMES),
         "active_stems": list(model_stems(get_separation_model())),
         "model_stems": {mid: list(model_stems(mid)) for mid in SEPARATION_MODELS},
+        # id + label for each model so the Settings dropdown is data-driven --
+        # adding a model to SEPARATION_MODELS makes it appear with no HTML edit.
+        "models": [{"id": mid, "label": m["label"]} for mid, m in SEPARATION_MODELS.items()],
     }

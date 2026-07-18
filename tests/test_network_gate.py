@@ -255,6 +255,10 @@ def test_config_active_stems_follows_model(_isolated_settings):
         # model_stems maps every model so the frontend can switch instantly.
         assert body["model_stems"]["kim_ft_vocal"] == ["vocals", "other"]
         assert len(body["model_stems"]["htdemucs_6s"]) == 6
+        # The dropdown is data-driven: every registry model has an id + label.
+        ids = [m["id"] for m in body["models"]]
+        assert ids == ["htdemucs_6s", "bs_roformer_sw", "kim_ft_vocal"]
+        assert all(m["label"] for m in body["models"])
 
 
 def test_gate_blocks_non_loopback_when_off():

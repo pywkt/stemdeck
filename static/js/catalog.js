@@ -1903,6 +1903,26 @@ async function wireGeneralSettings(overlay) {
   digitsOnly(durInput);
   digitsOnly(portInput);
 
+  // Populate the separation-model dropdown from the registry (/api/config's
+  // `models`), so every model in SEPARATION_MODELS appears with no HTML edit.
+  if (modelSel) {
+    try {
+      const r = await fetch("/api/config", { cache: "no-store" });
+      if (r.ok) {
+        const cfg = await r.json();
+        if (Array.isArray(cfg.models) && cfg.models.length) {
+          modelSel.innerHTML = "";
+          for (const m of cfg.models) {
+            const opt = document.createElement("option");
+            opt.value = m.id;
+            opt.textContent = m.label;
+            modelSel.appendChild(opt);
+          }
+        }
+      }
+    } catch { /* leave whatever options exist */ }
+  }
+
   try {
     const r = await fetch("/api/settings", { cache: "no-store" });
     if (r.ok) apply(await r.json());
@@ -2200,12 +2220,9 @@ function openLibraryEditor() {
           <div class="settings-row">
             <div class="settings-row-text">
               <div class="settings-row-title">Separation model</div>
-              <div class="settings-row-desc">Demucs is the default 6-stem model. BS-Roformer is higher quality but needs the optional model download (~700 MB, fetched on first use).</div>
+              <div class="settings-row-desc">Demucs (6 stems) is the default. BS-Roformer is higher quality (6 stems); the Vocal Roformer isolates just vocals + instrumental. Roformer models fetch a model file (~700–900 MB) on first use.</div>
             </div>
-            <select class="settings-select set-separation-model" aria-label="Separation model">
-              <option value="htdemucs_6s">Demucs (htdemucs_6s)</option>
-              <option value="bs_roformer_sw">BS-Roformer (higher quality)</option>
-            </select>
+            <select class="settings-select set-separation-model" aria-label="Separation model"></select>
           </div>
         </div>
         <div class="settings-section">

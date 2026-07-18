@@ -168,3 +168,36 @@ def test_peaks_match_full_load_reference(tmp_path):
     for (a_min, a_max), (e_min, e_max) in zip(actual, expected, strict=True):
         assert a_min == pytest.approx(e_min, abs=1e-4)
         assert a_max == pytest.approx(e_max, abs=1e-4)
+
+
+def test_make_original_track_skipped_for_2stem_model(tmp_path):
+    """A 2-stem vocal model (vocals+other) gets no 'original' backing track:
+    'other' already IS the instrumental, so a complement is redundant."""
+    from app.core.models import Job
+    from app.pipeline.collect import make_original_track
+
+    stems_dir = tmp_path / "stems"
+    stems_dir.mkdir()
+    _write_wav(stems_dir / "vocals.wav", [0.1, -0.1, 0.2, -0.2])
+    _write_wav(stems_dir / "other.wav", [0.1, -0.1, 0.2, -0.2])
+
+    job = Job(id="abcdef2stem01", separation_model="kim_ft_vocal", selected_stems=["vocals"])
+    assert make_original_track(job, tmp_path, stems_dir) is None
+    assert not (stems_dir / "original.wav").exists()
+
+
+def test_make_original_track_built_for_6stem_subset(tmp_path):
+    """A 6-stem model with a strict subset still builds 'original' (the
+    complement of the selected stems) -- no regression."""
+    from app.core.models import Job
+    from app.pipeline.collect import make_original_track
+
+    stems_dir = tmp_path / "stems"
+    stems_dir.mkdir()
+    for name in ("vocals", "drums", "bass", "guitar", "piano", "other"):
+        _write_wav(stems_dir / f"{name}.wav", [0.1, -0.1, 0.2, -0.2])
+
+    job = Job(id="abcdef6stem01", separation_model="htdemucs_6s", selected_stems=["vocals"])
+    out = make_original_track(job, tmp_path, stems_dir)
+    assert out is not None
+    assert (stems_dir / "original.wav").exists()

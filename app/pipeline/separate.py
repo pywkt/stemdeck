@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from app.core.config import TIMEOUT_DEMUCS_STALL, stems_subdir_for_model
+from app.core.config import TIMEOUT_DEMUCS_STALL, model_backend, model_subdir
 from app.core.models import Job, JobCancelled, _set
 from app.core.registry import set_proc
 from app.core.settings import get_demucs_device, get_separation_model, get_separation_quality
@@ -33,15 +33,14 @@ _worker: dict[str, object] = {}
 
 
 def _spawn_worker_cmd(device: str, model: str) -> list[str]:
-    """Build the persistent-worker invocation for the selected backend. Module-
-    level seam so tests can swap in a stub executable without touching the
-    process-management machinery (mirrors the old _demucs_cmd seam)."""
-    worker_module = (
-        "app.pipeline.roformer_worker"
-        if model == "bs_roformer_sw"
-        else "app.pipeline.demucs_worker"
-    )
-    return [sys.executable, "-m", worker_module, device]
+    """Build the persistent-worker invocation for the selected model's backend.
+    Module-level seam so tests can swap in a stub executable without touching the
+    process-management machinery (mirrors the old _demucs_cmd seam). The roformer
+    worker also needs the model id (it serves several checkpoints); the demucs
+    worker is single-model and ignores extra argv."""
+    if model_backend(model) == "roformer":
+        return [sys.executable, "-m", "app.pipeline.roformer_worker", device, model]
+    return [sys.executable, "-m", "app.pipeline.demucs_worker", device]
 
 
 def _kill_worker() -> None:
@@ -109,8 +108,8 @@ def _run_demucs(
     set_proc(job.id, proc)
 
     payload = {"source": str(source), "job_dir": str(job_dir)}
-    if model != "bs_roformer_sw":
-        # shift-averaging is a demucs-only knob; the Roformer worker ignores it.
+    if model_backend(model) == "demucs":
+        # shift-averaging is a demucs-only knob; Roformer workers ignore it.
         payload["shifts"] = 2 if get_separation_quality() == "best" else 1
     req = json.dumps(payload) + "\n"
     try:
@@ -236,7 +235,7 @@ def separate(job: Job, source: Path, job_dir: Path) -> Path:
     # job for the completion summary / metadata / failure quarantine.
     device = get_demucs_device()
     model = get_separation_model()
-    subdir = stems_subdir_for_model(model)
+    subdir = model_subdir(model)
     job.compute_device = device
     job.separation_model = model
     logger.info("[%s] separating on device=%s model=%s", job.id, device, model)

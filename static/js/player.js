@@ -23,7 +23,7 @@ import { createChunkedAudioEngine } from "./chunkedAudioEngine.js";
 import {
   loadMixIntoState, resetMixerState, refreshMixerVisuals,
   setLaneControlsEnabled, ensureMixerStateDefaults, applyMix,
-  renderRealMiniWave, renderRealMiniWaveFromPeaks, renderMixerRow,
+  renderRealMiniWave, renderRealMiniWaveFromPeaks, renderMixerRow, updateStemLabels,
 } from "./mixer.js";
 import {
   buildRuler, updatePlayheadMarker, updateLoopRegionVisual,
@@ -64,9 +64,10 @@ function engineMode() {
 const MAX_ENGINE_DECODED_BYTES = 1.2e9;
 
 // Stem-selection filter: the import-page stem-choice toggles set
-// selectedStems (state.js). Backend always processes all 6 -- we
-// hide the rows for unselected stems in the studio dashboard so the
-// user "only sees what they selected to extract".
+// selectedStems (state.js). The model produces its own stem set (6 for
+// Demucs/BS-Roformer, vocals+other for a vocal model) -- we hide the rows
+// for stems this job doesn't have (or the user didn't select) so the
+// dashboard shows only the relevant lanes.
 const _STEM_ROW_SELECTORS = [
   ".stem-list span[data-stem]",
   ".presence-bars i[data-stem]",
@@ -74,19 +75,18 @@ const _STEM_ROW_SELECTORS = [
 ];
 
 function applyStemSelectionFilter(presentNames) {
-  // Waveform rows: original hides if absent; STEM_NAMES rows always show, grayed if absent
+  // presentNames is the stem set THIS view has: all 6 for the empty/ready shell,
+  // or the job's actual stems (e.g. vocals+other) once a track is wired up. Rows
+  // for stems not in the set are HIDDEN (not merely grayed), so a 2-stem job
+  // shows 2 lanes rather than 6 with 4 dead ones. "original" hides when absent.
+  const stemNames = STEM_NAMES.filter((n) => presentNames.has(n));
   for (const el of document.querySelectorAll(".stem-waveform-row[data-stem]")) {
     const stem = el.dataset.stem;
-    if (stem === "original") {
-      el.classList.toggle("hidden", !presentNames.has(stem));
-      el.classList.remove("unavailable");
-    } else {
-      el.classList.remove("hidden");
-      el.classList.toggle("unavailable", !presentNames.has(stem));
-    }
+    el.classList.toggle("hidden", !presentNames.has(stem));
+    el.classList.remove("unavailable");
   }
   const originalRow = presentNames.has("original") ? 1 : 0;
-  const visibleTrackCount = originalRow + STEM_NAMES.length;
+  const visibleTrackCount = originalRow + stemNames.length;
   const app = document.querySelector(".app");
   app?.style.setProperty("--visible-track-count", String(visibleTrackCount));
   app?.style.setProperty(
@@ -102,14 +102,7 @@ function applyStemSelectionFilter(presentNames) {
   }
   const visibleMixerNames = [];
   if (presentNames.has("original")) visibleMixerNames.push("original");
-  for (const name of STEM_NAMES) {
-    if (presentNames.has(name)) visibleMixerNames.push(name);
-  }
-  const mixerCap = STEM_NAMES.length + (presentNames.has("original") ? 1 : 0);
-  for (const name of STEM_NAMES) {
-    if (visibleMixerNames.length >= mixerCap) break;
-    if (!visibleMixerNames.includes(name)) visibleMixerNames.push(name);
-  }
+  visibleMixerNames.push(...stemNames);
   const visibleMixerSet = new Set(visibleMixerNames);
 
   for (const row of document.querySelectorAll(".mixer-column .lane-header[data-stem]")) {
@@ -372,11 +365,13 @@ function renderOverviewWaveformPath(stemName, peaks, norm, color, barCount) {
 }
 
 // The lane set must mirror the mixer/multitrack lanes (orderedNames in
-// wireUpAudio): "original" plus the stems when an original lane is present,
-// otherwise just the stems. Rendering a row for every lane keeps the overlay
-// aligned even when only a subset of stems was extracted.
+// wireUpAudio): "original" (when present) plus the job's ACTUAL stems, in
+// canonical order. Driven by the job's stems -- not the global 6 -- so a
+// 2-stem job produces 2 lanes, matching the mixer/multitrack exactly.
 function overviewLaneNames(stems) {
-  return stems.some((s) => s.name === "original") ? TRACK_NAMES : STEM_NAMES;
+  const present = new Set(stems.map((s) => s.name));
+  const stemNames = STEM_NAMES.filter((n) => present.has(n));
+  return present.has("original") ? ["original", ...stemNames] : stemNames;
 }
 
 function renderAllOverviewWaveformsFromPeaks(stems, peaksData) {
@@ -940,6 +935,8 @@ export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, ti
   _currentHasVideo = !!hasVideo;
   document.getElementById("footer-export-wrap")?.classList.toggle("has-video", !!hasVideo);
   applyStemSelectionFilter(new Set(stems.map((s) => s.name)));
+  // Relabel "other" -> "Instrumental" for a 2-stem vocal job (no drums/bass/etc).
+  updateStemLabels(stems.map((s) => s.name));
   updateFooterTrack({ thumbnail, stemCount: stems.filter((s) => s.name !== "original").length });
 
   // Reset footer waveform state — will be re-populated below after peaks fetch.
@@ -988,9 +985,11 @@ export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, ti
 
   // "original" is prepended at row 0 only when it actually has a URL so it
   // appears at the top. Omitting it when absent avoids a phantom 70px gap.
-  // STEM_NAMES follow at the next consecutive rows so mixer lanes stay aligned.
+  // The stem lanes are the job's ACTUAL stems (not the global 6) in canonical
+  // order, so a 2-stem vocal job renders 2 lanes instead of 6 with 4 grayed.
   const stemsByName = Object.fromEntries(stems.map((s) => [s.name, s]));
-  const orderedNames = [...(stemsByName["original"] ? ["original"] : []), ...STEM_NAMES];
+  const jobStemNames = STEM_NAMES.filter((n) => stemsByName[n]);
+  const orderedNames = [...(stemsByName["original"] ? ["original"] : []), ...jobStemNames];
   setTrackIndex(Object.fromEntries(orderedNames.map((name, i) => [name, i])));
   multitrackContainer.innerHTML = "";
 

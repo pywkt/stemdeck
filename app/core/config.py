@@ -77,19 +77,73 @@ FFPROBE_BIN = _env_path(
     FFMPEG_DIR / ("ffprobe.exe" if sys.platform.startswith("win") else "ffprobe"),
 )
 DEMUCS_MODEL = os.environ.get("STEMDECK_DEMUCS_MODEL", "htdemucs_6s").strip() or "htdemucs_6s"
-# BS-Roformer-SW: the optional 6-stem Roformer backend (run via audio-separator).
-# ROFORMER_MODEL is the checkpoint filename audio-separator resolves from its
-# catalog; ROFORMER_SUBDIR is the per-job stems directory name, mirroring how
-# DEMUCS_MODEL doubles as the demucs stems subdir. See app/pipeline/separate.py.
-ROFORMER_MODEL = "BS-Roformer-SW.ckpt"
-ROFORMER_SUBDIR = "bs_roformer_sw"
+
+# ── separation model registry ──
+# Every selectable separator, keyed by its setting id (see settings.py's
+# separation_model). Each entry declares:
+#   backend    -- "demucs" (app/pipeline/demucs_worker) or "roformer"
+#                 (app/pipeline/roformer_worker, needs the [roformer] extra)
+#   checkpoint -- model name/file the backend loads (demucs bag name, or the
+#                 audio-separator catalog filename for roformer)
+#   stems      -- the stem names this model produces, in canonical order. NOT
+#                 every model makes all 6: vocal models make just vocals+other.
+#                 collect()/the mixer/the API derive the per-job set from this.
+#   subdir     -- per-job stems directory name (job_dir/<subdir>/<source stem>)
+#   label      -- human label for the Settings dropdown
+# Stem names must stay within STEM_NAMES (the canonical superset) so the API
+# validation and colour/label maps keep working -- a model emitting a genuinely
+# new stem name would also need those widened.
+SEPARATION_MODELS: dict[str, dict] = {
+    "htdemucs_6s": {
+        "backend": "demucs",
+        "checkpoint": DEMUCS_MODEL,
+        "stems": STEM_NAMES,
+        "subdir": "htdemucs_6s",
+        "label": "Demucs (6 stems)",
+    },
+    "bs_roformer_sw": {
+        "backend": "roformer",
+        "checkpoint": "BS-Roformer-SW.ckpt",
+        "stems": STEM_NAMES,
+        "subdir": "bs_roformer_sw",
+        "label": "BS-Roformer (6 stems, higher quality)",
+    },
+    "kim_ft_vocal": {
+        "backend": "roformer",
+        "checkpoint": "mel_band_roformer_kim_ft_unwa.ckpt",
+        "stems": ("vocals", "other"),  # "other" == the full instrumental
+        "subdir": "kim_ft_vocal",
+        "label": "Vocal Roformer (vocals only, highest quality)",
+    },
+}
+
+DEFAULT_SEPARATION_MODEL = "htdemucs_6s"
 
 
-def stems_subdir_for_model(separation_model: str) -> str:
-    """The job-dir subfolder a separation backend writes its <stem>.wav files
-    into: `job_dir / <this> / <source stem>`. Keeps separate() and collect()
-    from hardcoding DEMUCS_MODEL so the roformer path can coexist."""
-    return ROFORMER_SUBDIR if separation_model == "bs_roformer_sw" else DEMUCS_MODEL
+def _model_entry(separation_model: str) -> dict:
+    """Registry entry for a model id, falling back to the default so callers
+    never KeyError on a stale/unknown persisted value."""
+    return SEPARATION_MODELS.get(separation_model, SEPARATION_MODELS[DEFAULT_SEPARATION_MODEL])
+
+
+def model_backend(separation_model: str) -> str:
+    return _model_entry(separation_model)["backend"]
+
+
+def model_checkpoint(separation_model: str) -> str:
+    return _model_entry(separation_model)["checkpoint"]
+
+
+def model_stems(separation_model: str) -> tuple[str, ...]:
+    """The stem names a model produces (e.g. all 6, or just vocals+other)."""
+    return tuple(_model_entry(separation_model)["stems"])
+
+
+def model_subdir(separation_model: str) -> str:
+    """The job-dir subfolder a backend writes its <stem>.wav files into:
+    `job_dir / <this> / <source stem>`. Keeps separate()/collect() from
+    hardcoding a single model's dir so multiple backends can coexist."""
+    return _model_entry(separation_model)["subdir"]
 
 
 MAX_DURATION_SEC = max(60, _env_int("STEMDECK_MAX_DURATION_SEC", 1200))  # 20 min default

@@ -385,3 +385,47 @@ for line in sys.stdin:
 
     req = _json.loads((tmp_path / "req.json").read_text())
     assert "shifts" not in req
+
+
+def test_2stem_vocal_model_routes_and_collects_two_stems(tmp_path, monkeypatch):
+    """The kim_ft_vocal model spawns the roformer worker with its model id,
+    writes into its own subdir, and collect() returns exactly vocals+other."""
+    from app.pipeline.collect import collect
+
+    # Stub worker: writes ONLY vocals.wav + other.wav into the kim_ft_vocal
+    # subdir (what the real 2-stem model produces), then succeeds.
+    worker = """
+import sys, json, os
+for line in sys.stdin:
+    req = json.loads(line)
+    d = os.path.join(req["job_dir"], "kim_ft_vocal", "source")
+    os.makedirs(d, exist_ok=True)
+    for name in ("vocals", "other"):
+        open(os.path.join(d, name + ".wav"), "wb").write(b"RIFF")
+    sys.stderr.write("100%\\n@@DONE@@\\n")
+    sys.stderr.flush()
+"""
+    spawned_argv = []
+    real_spawn = sep_mod._spawn_worker_cmd
+
+    def fake_spawn(device, model):
+        spawned_argv.append(real_spawn(device, model))
+        return [sys.executable, "-c", worker]
+
+    monkeypatch.setattr(sep_mod, "get_demucs_device", lambda: "cpu")
+    monkeypatch.setattr(sep_mod, "get_separation_model", lambda: "kim_ft_vocal")
+    monkeypatch.setattr(sep_mod, "_spawn_worker_cmd", fake_spawn)
+
+    (tmp_path / "source.wav").write_bytes(b"RIFF")
+    job = Job(id="abcdefkimft01")
+    stems_root = sep_mod.separate(job, tmp_path / "source.wav", tmp_path)
+
+    # Routed to the roformer worker with the model id in argv.
+    assert any("roformer_worker" in " ".join(a) and "kim_ft_vocal" in a for a in spawned_argv)
+    assert job.separation_model == "kim_ft_vocal"
+    assert stems_root == tmp_path / "kim_ft_vocal" / "source"
+
+    found = collect(job, stems_root, tmp_path)
+    assert set(found) == {"vocals", "other"}  # exactly 2 stems, not 6
+    assert (tmp_path / "stems" / "vocals.wav").is_file()
+    assert (tmp_path / "stems" / "other.wav").is_file()

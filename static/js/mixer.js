@@ -1,5 +1,5 @@
 import {
-  STEM_NAMES, TRACK_NAMES, STEM_COLORS, STEM_DISPLAY, LANE_VOLUME_MAX,
+  STEM_NAMES, TRACK_NAMES, STEM_COLORS, STEM_DISPLAY, LANE_VOLUME_MAX, stemLabel,
 } from "./constants.js";
 import {
   mixerState, mixerEl, stemListEl, currentJobId, multitrack, trackIndex,
@@ -333,6 +333,27 @@ function stemIconMarkup(stemName) {
     original: `<svg ${common}><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`,
   };
   return icons[stemName] || icons.other;
+}
+
+// Update the visible "other" labels once the job's stem set is known, so a
+// 2-stem vocal job's "other" lane reads "Instrumental". Called from wireUpAudio
+// after the lanes are filtered to the job's stems. Touches the mixer lane name,
+// the sidebar stem-list row (<em>'s trailing text node, after its icon), and
+// the presence stem-card label. All other stem names keep STEM_DISPLAY.
+export function updateStemLabels(jobStemNames) {
+  const label = stemLabel("other", jobStemNames);
+  for (const el of document.querySelectorAll('.lane-header[data-stem="other"] .mx-name')) {
+    el.textContent = label;
+  }
+  // Sidebar row: the label is the trailing text node inside <em> (after the SVG).
+  for (const em of document.querySelectorAll('.stem-list [data-stem="other"] em')) {
+    const textNode = [...em.childNodes].reverse().find((n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
+    if (textNode) textNode.textContent = label;
+  }
+  // Presence card label (upper-cased in the UI).
+  for (const el of document.querySelectorAll('.stem-card[data-stem="other"] .stem-card-label')) {
+    el.textContent = label.toUpperCase();
+  }
 }
 
 export function renderMixerRow(stem) {

@@ -234,6 +234,29 @@ def test_separation_model_api_round_trip_and_422(_isolated_settings):
         assert c.get("/api/settings").json()["separation_model"] == "bs_roformer_sw"  # unchanged
 
 
+def test_separation_model_vocal_round_trip(_isolated_settings):
+    # The vocal-specialist 2-stem model is a valid choice (comes from the
+    # registry, not a hardcoded pair).
+    assert settings_mod.set_separation_model("kim_ft_vocal") == "kim_ft_vocal"
+    assert settings_mod.get_separation_model() == "kim_ft_vocal"
+
+
+def test_config_active_stems_follows_model(_isolated_settings):
+    # /api/config exposes the CURRENT model's stem set so the import UI can
+    # offer only the stems that model produces.
+    with TestClient(app) as c:
+        c.post("/api/settings", json={"separation_model": "htdemucs_6s"})
+        body = c.get("/api/config").json()
+        assert len(body["stem_names"]) == 6  # canonical superset unchanged
+        assert len(body["active_stems"]) == 6
+        c.post("/api/settings", json={"separation_model": "kim_ft_vocal"})
+        body = c.get("/api/config").json()
+        assert body["active_stems"] == ["vocals", "other"]
+        # model_stems maps every model so the frontend can switch instantly.
+        assert body["model_stems"]["kim_ft_vocal"] == ["vocals", "other"]
+        assert len(body["model_stems"]["htdemucs_6s"]) == 6
+
+
 def test_gate_blocks_non_loopback_when_off():
     settings_mod.set_allow_network(False)
     # TestClient's client host ("testclient") is treated as non-loopback.

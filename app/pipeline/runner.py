@@ -227,6 +227,11 @@ def _write_metadata(job: Job, job_dir: Path) -> None:
         "has_video": job.has_video,
         "compute_device": job.compute_device,
         "separation_model": job.separation_model,
+        # The stem names this job actually produced -- may be fewer than the
+        # canonical 6 (e.g. a 2-stem vocal model). Persisted so orphan-dir
+        # recovery (registry._recover_done_job) restores the real set instead
+        # of assuming all 6.
+        "stems": [s["name"] for s in job.stems if s.get("name") not in ("original", "mix")],
         "gpu_fallback": job.gpu_fallback,
         "stage_timings": job.stage_timings,
     }

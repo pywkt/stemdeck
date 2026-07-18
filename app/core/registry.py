@@ -143,17 +143,6 @@ def _recover_done_job(job_dir: Path) -> Job | None:
     stems_dir = job_dir / "stems"
     if not stems_dir.is_dir():
         return None
-    stems = [
-        {"name": name, "url": f"/api/jobs/{job_dir.name}/stems/{name}.wav"}
-        for name in ("original", *STEM_NAMES)
-        if (stems_dir / f"{name}.wav").is_file()
-    ]
-    if not stems:
-        return None
-    mix_url = None
-    if (stems_dir / "mix.wav").is_file():
-        mix_url = f"/api/jobs/{job_dir.name}/stems/mix.wav"
-    selected = [stem["name"] for stem in stems if stem["name"] in STEM_NAMES] or list(STEM_NAMES)
     meta_path = job_dir / "metadata.json"
     meta: dict = {}
     if meta_path.is_file():
@@ -161,7 +150,28 @@ def _recover_done_job(job_dir: Path) -> Job | None:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             pass
-    else:
+    # Prefer the stem set the job actually produced (persisted in metadata) so a
+    # 2-stem vocal job recovers as 2 stems, not all 6. Fall back to scanning the
+    # canonical superset for older jobs / crash-window dirs with no stems list.
+    persisted_stems = meta.get("stems")
+    candidate_stems = (
+        list(persisted_stems)
+        if isinstance(persisted_stems, list) and persisted_stems
+        else list(STEM_NAMES)
+    )
+    stems = [
+        {"name": name, "url": f"/api/jobs/{job_dir.name}/stems/{name}.wav"}
+        for name in ("original", *candidate_stems)
+        if (stems_dir / f"{name}.wav").is_file()
+    ]
+    if not stems:
+        return None
+    mix_url = None
+    if (stems_dir / "mix.wav").is_file():
+        mix_url = f"/api/jobs/{job_dir.name}/stems/mix.wav"
+    produced = set(candidate_stems)
+    selected = [s["name"] for s in stems if s["name"] in produced] or list(candidate_stems)
+    if not meta_path.is_file():
         # Crash window (#284): the process died between status=done and the
         # metadata write, leaving a complete stems dir that used to be
         # unrecoverable. Recover with a placeholder title and write a minimal
@@ -195,6 +205,7 @@ def _recover_done_job(job_dir: Path) -> Job | None:
         stem_presence=meta.get("stem_presence"),
         sections=meta.get("sections"),
         tags=meta.get("tags"),
+        separation_model=meta.get("separation_model"),
     )
 
 

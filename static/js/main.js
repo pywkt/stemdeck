@@ -2,7 +2,7 @@ import {
   playBtn, loopBtn, multitrack, totalDuration, loopEnabled, loopStart, loopEnd,
   setLoopStart, setLoopEnd, selectedStems, saveSelectedStems, stemSelectionReady,
 } from "./state.js";
-import { STEM_NAMES, syncStemNamesFromAPI } from "./constants.js";
+import { ACTIVE_STEMS, syncStemNamesFromAPI } from "./constants.js";
 import { renderEmptyShell, buildStripStems, downloadCurrentMix, downloadCurrentVideo, downloadAllStemsZip, downloadRegionMix, drawFooterPlaceholder } from "./player.js";
 import { wireJobForm, showError } from "./job.js";
 import { wireTransportButtons } from "./transport.js";
@@ -30,6 +30,25 @@ import { runStoreMigrationIfNeeded } from "./utils.js";
 //
 // Persisted across reloads so the next song honors the user's last
 // chosen subset, but a 0-selection state is normalized to all 6.
+// The import chips offer only the CURRENT model's stems (ACTIVE_STEMS): a vocal
+// model that makes just vocals+other hides the drums/bass/guitar/piano chips.
+// Hides inactive chips and drops any now-irrelevant stems from selectedStems,
+// normalizing an emptied selection back to "all active". Call on load and
+// whenever the model changes.
+export function applyActiveStems() {
+  const active = new Set(ACTIVE_STEMS);
+  for (const btn of document.querySelectorAll(".stem-choice[data-stem]")) {
+    btn.classList.toggle("hidden", !active.has(btn.dataset.stem));
+  }
+  for (const n of [...selectedStems]) {
+    if (!active.has(n)) selectedStems.delete(n);
+  }
+  if (selectedStems.size === 0) for (const n of ACTIVE_STEMS) selectedStems.add(n);
+  saveSelectedStems();
+  refreshStemChoiceVisuals();
+  buildStripStems();
+}
+
 function refreshStemChoiceVisuals() {
   for (const btn of document.querySelectorAll(".stem-choice[data-stem]")) {
     btn.setAttribute(
@@ -40,7 +59,7 @@ function refreshStemChoiceVisuals() {
 }
 
 function handleStemChoiceClick(stem) {
-  const allSelected = selectedStems.size === STEM_NAMES.length;
+  const allSelected = selectedStems.size === ACTIVE_STEMS.length;
   if (allSelected) {
     // Default state -> switch to "only this stem".
     selectedStems.clear();
@@ -49,7 +68,7 @@ function handleStemChoiceClick(stem) {
     selectedStems.delete(stem);
     if (selectedStems.size === 0) {
       // Empty out wraps back to "all" so the user is never stuck.
-      for (const n of STEM_NAMES) selectedStems.add(n);
+      for (const n of ACTIVE_STEMS) selectedStems.add(n);
     }
   } else {
     selectedStems.add(stem);
@@ -71,15 +90,15 @@ function wireAllButton() {
   if (!allBtn) return;
 
   function syncAllBtn() {
-    allBtn.setAttribute("aria-pressed", String(selectedStems.size === STEM_NAMES.length));
+    allBtn.setAttribute("aria-pressed", String(selectedStems.size === ACTIVE_STEMS.length));
   }
 
   allBtn.addEventListener("click", () => {
-    const allSelected = selectedStems.size === STEM_NAMES.length;
+    const allSelected = selectedStems.size === ACTIVE_STEMS.length;
     if (allSelected) {
       selectedStems.clear();
     } else {
-      for (const n of STEM_NAMES) selectedStems.add(n);
+      for (const n of ACTIVE_STEMS) selectedStems.add(n);
     }
     saveSelectedStems();
     refreshStemChoiceVisuals();
@@ -97,7 +116,7 @@ function wireAllButton() {
 
 // ─── Wire everything up ───
 
-syncStemNamesFromAPI().then(() => buildStripStems());
+syncStemNamesFromAPI().then(() => applyActiveStems());
 wireJobForm();
 wireTransportButtons();
 wireFooterControls();

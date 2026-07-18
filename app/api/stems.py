@@ -31,16 +31,19 @@ logger = logging.getLogger("stemdeck.api")
 
 router = APIRouter(tags=["stems"])
 
-# Stem files served by this endpoint: the 6 demucs stems + two
-# pipeline-produced extras. "original" is the re-encoded source song
-# (added when the user picked a strict subset), "mix" is the ffmpeg
-# amix of the user's selected stems.
+# Stem files served by this endpoint: the canonical stem names + two
+# pipeline-produced extras. A job produces a subset of STEM_NAMES (all 6 for
+# Demucs/BS-Roformer, just vocals+other for a vocal model); validating against
+# the superset is safe because the file-existence check downstream rejects any
+# stem this particular job didn't produce. "original" is the complement backing
+# track (only for a subset selection on a multi-stem model), "mix" the ffmpeg
+# amix of the selected stems.
 _ALLOWED_NAMES = frozenset(STEM_NAMES) | {"original", "mix"}
 
-# Lanes the dynamic mixdown may sum: the 6 stems plus "original" (the complement
-# track shown when the user picked a subset). "mix" is excluded -- it is the
-# static pre-render this endpoint replaces. Gains are linear; the studio caps a
-# lane at 2.0, so this generous bound just rejects abusive values.
+# Lanes the dynamic mixdown may sum: the canonical stems plus "original". "mix"
+# is excluded -- it is the static pre-render this endpoint replaces. Validated
+# against the superset (see above). Gains are linear; the studio caps a lane at
+# 2.0, so this generous bound just rejects abusive values.
 _MIXDOWN_NAMES = frozenset(STEM_NAMES) | {"original"}
 _MIXDOWN_MAX_GAIN = 4.0
 

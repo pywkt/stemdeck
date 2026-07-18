@@ -1936,8 +1936,14 @@ async function wireGeneralSettings(overlay) {
   qualitySel?.addEventListener("change", () => {
     post({ separation_quality: qualitySel.value });
   });
-  modelSel?.addEventListener("change", () => {
-    post({ separation_model: modelSel.value });
+  modelSel?.addEventListener("change", async () => {
+    await post({ separation_model: modelSel.value });
+    // The model determines which stems the import UI can offer -- re-fetch the
+    // active-stem set and refresh the chips so they match the new model.
+    const { syncStemNamesFromAPI } = await import("./constants.js");
+    const { applyActiveStems } = await import("./main.js");
+    await syncStemNamesFromAPI();
+    applyActiveStems();
   });
   // Compute device needs its own POST path: unlike the clamped numeric
   // settings, the server can REJECT a forced device (422 with a reason, e.g.

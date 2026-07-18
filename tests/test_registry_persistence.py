@@ -59,6 +59,34 @@ def test_restore_recovers_orphan_done_job_from_stems(tmp_path: Path):
     assert {stem["name"] for stem in restored.stems} == {"vocals", "drums"}
 
 
+def test_restore_recovers_2stem_vocal_job(tmp_path: Path):
+    """A 2-stem vocal job recovers as exactly vocals+other (from the persisted
+    metadata stems list + separation_model), not padded to the canonical 6."""
+    job_dir = tmp_path / "abcdef012abc"
+    stems_dir = job_dir / "stems"
+    stems_dir.mkdir(parents=True)
+    (stems_dir / "vocals.wav").write_bytes(b"RIFF")
+    (stems_dir / "other.wav").write_bytes(b"RIFF")
+    (job_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "title": "Vocal Track",
+                "separation_model": "kim_ft_vocal",
+                "stems": ["vocals", "other"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    restore_registry(tmp_path)
+
+    restored = _jobs["abcdef012abc"]
+    assert restored.status == "done"
+    assert {stem["name"] for stem in restored.stems} == {"vocals", "other"}
+    assert restored.separation_model == "kim_ft_vocal"
+    assert set(restored.selected_stems) == {"vocals", "other"}
+
+
 def test_restore_recovers_orphan_without_metadata(tmp_path: Path):
     """#284: a crash between status=done and the metadata write used to leave
     a complete stems dir permanently unrecoverable. Now it comes back with a

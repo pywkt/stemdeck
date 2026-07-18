@@ -24,7 +24,9 @@ import threading
 
 from app.core.config import (
     DATA_DIR,
+    DEFAULT_SEPARATION_MODEL,
     MAX_DURATION_SEC,
+    SEPARATION_MODELS,
     VIDEO_MAX_HEIGHT,
     available_torch_devices,
     detect_torch_device,
@@ -262,19 +264,19 @@ def set_separation_quality(value: str) -> str:
 
 
 # ── separation_model ──
-# Which neural separator produces the stems. "htdemucs_6s" (default) is the
-# Demucs 6-stem model that has always shipped. "bs_roformer_sw" is the 6-stem
-# BS-Roformer-SW model run via the `audio-separator` package -- higher quality
-# on the shared stems and a usable piano, but it needs the optional [roformer]
+# Which neural separator produces the stems. The choices come straight from the
+# model registry (app/core/config.py SEPARATION_MODELS): the default Demucs
+# 6-stem model, the 6-stem BS-Roformer-SW, and vocal-specialist models that
+# produce only vocals+other. Roformer models need the optional [roformer]
 # dependency extra and a one-time model download. Read live per job
 # (app/pipeline/separate.py), so a change applies to the NEXT separation without
 # a restart. STEMDECK_SEPARATION_MODEL seeds the default for env-based setups.
-_MODEL_CHOICES = ("htdemucs_6s", "bs_roformer_sw")
+_MODEL_CHOICES = tuple(SEPARATION_MODELS)
 
 
 def _default_separation_model() -> str:
     env = os.environ.get("STEMDECK_SEPARATION_MODEL", "").strip().lower()
-    return env if env in _MODEL_CHOICES else "htdemucs_6s"
+    return env if env in _MODEL_CHOICES else DEFAULT_SEPARATION_MODEL
 
 
 def get_separation_model() -> str:

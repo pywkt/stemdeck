@@ -51,10 +51,10 @@ class Job:
     sections: list[dict] | None = None  # [{id, name, start, end, color}]
     tags: list[str] | None = None  # YouTube tags + categories, lowercased, max 8
     stems: list[dict[str, str]] = field(default_factory=list)
-    # Subset of stems the user chose at submit. The pipeline produces all
-    # 6 regardless (Demucs htdemucs_6s is fixed), but after collect we
-    # mix down only the selected ones into mix.wav so the user can
-    # download a single track containing just their chosen stems.
+    # Subset of stems the user chose at submit. The model produces its full
+    # stem set (all 6 for Demucs/BS-Roformer, just vocals+other for a vocal
+    # model), but after collect we mix down only the selected ones into
+    # mix.wav so the user can download a single track of their chosen stems.
     selected_stems: list[str] = field(default_factory=list)
     mix_url: str | None = None  # populated when a strict subset was selected
     source_url: str | None = None  # original URL or "local:<filename>" for file uploads

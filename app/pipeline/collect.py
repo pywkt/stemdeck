@@ -13,6 +13,7 @@ from app.core.config import (
     STEM_NAMES,
     TIMEOUT_FFMPEG,
     ffmpeg_executable,
+    model_stems,
 )
 from app.core.models import Job
 from app.core.registry import all_jobs as registry_all
@@ -110,8 +111,15 @@ def make_original_track(job: Job, job_dir: Path, stems_dir: Path) -> Path | None
     if "original" were the raw source download (drum hits in original
     + isolated drums.wav = drums at 2x amplitude).
 
-    Skipped when the user kept all 6 stems (no complement to mix) or
-    when none of the unselected stem WAVs are on disk."""
+    Skipped when the user kept all stems (no complement to mix) or
+    when none of the unselected stem WAVs are on disk.
+
+    Also skipped for 2-stem models (e.g. the vocal Roformer's vocals+other):
+    "other" already IS the full instrumental, so a complement backing track is
+    redundant -- and selecting just "vocals" would degenerate to a copy of
+    "other" anyway."""
+    if len(model_stems(job.separation_model)) <= 2:
+        return None
     unselected = [s for s in STEM_NAMES if s not in job.selected_stems]
     inputs = [stems_dir / f"{name}.wav" for name in unselected]
     inputs = [p for p in inputs if p.exists()]

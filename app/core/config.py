@@ -100,6 +100,11 @@ SEPARATION_MODELS: dict[str, dict] = {
         "stems": STEM_NAMES,
         "subdir": "htdemucs_6s",
         "label": "Demucs (6 stems)",
+        "description": (
+            "Meta's Demucs htdemucs_6s. Splits into 6 stems (vocals, drums, "
+            "bass, guitar, piano, other). The default -- fast and reliable, "
+            "no extra download. Piano/guitar are usable but the weakest stems."
+        ),
     },
     "bs_roformer_sw": {
         "backend": "roformer",
@@ -107,6 +112,11 @@ SEPARATION_MODELS: dict[str, dict] = {
         "stems": STEM_NAMES,
         "subdir": "bs_roformer_sw",
         "label": "BS-Roformer (6 stems, higher quality)",
+        "description": (
+            "6-stem BS-Roformer. Same stems as Demucs but noticeably cleaner "
+            "separation, especially vocals and a more usable piano. Slower, and "
+            "downloads a ~700 MB model on first use. Best all-round choice."
+        ),
     },
     "kim_ft_vocal": {
         "backend": "roformer",
@@ -114,6 +124,12 @@ SEPARATION_MODELS: dict[str, dict] = {
         "stems": ("vocals", "other"),  # "other" == the full instrumental
         "subdir": "kim_ft_vocal",
         "label": "Vocal Roformer (vocals only, highest quality)",
+        "description": (
+            "Mel-Band Roformer (Kim FT). Produces just 2 stems -- vocals and a "
+            "full instrumental. The cleanest vocal isolation available; ideal "
+            "when you only need the vocal or a karaoke/instrumental track. "
+            "Downloads a ~900 MB model on first use."
+        ),
     },
 }
 

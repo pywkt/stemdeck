@@ -744,7 +744,7 @@ input, textarea { font-family: inherit; }
   background: rgba(3,8,13,0.42); backdrop-filter: blur(2px);
 }
 .library-editor {
-  width: min(560px, calc(100vw - 32px));
+  width: min(640px, calc(100vw - 32px));
   /* Fixed height (not max-height) so the dialog stays one size across all tabs
      -- each pane fills it via flex:1, so switching tabs never resizes it. */
   height: min(70vh, 540px);
@@ -812,6 +812,12 @@ input, textarea { font-family: inherit; }
 .settings-row-text { min-width: 0; }
 .settings-row-title { font-size: 12.5px; font-weight: 600; color: var(--fg); }
 .settings-row-desc { font-size: 10.5px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+/* Stacked row: title, then a full-width control, then a description below --
+   used where the control's options/description are too long for the default
+   side-by-side layout (e.g. the separation-model picker). */
+.settings-row-stacked { flex-direction: column; align-items: stretch; gap: 6px; }
+.settings-select-wide { width: 100%; }
+.settings-row-stacked .set-separation-model-desc { margin-top: 2px; min-height: 2.6em; }
 .settings-lock-note { font-style: italic; opacity: 0.85; margin-top: 5px; }
 .settings-switch { position: relative; flex-shrink: 0; width: 42px; height: 24px; cursor: pointer; }
 .settings-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }

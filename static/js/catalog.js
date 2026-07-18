@@ -1860,7 +1860,15 @@ async function wireGeneralSettings(overlay) {
   const deviceResolved = overlay.querySelector(".set-demucs-resolved");
   const qualitySel = overlay.querySelector(".set-separation-quality");
   const modelSel = overlay.querySelector(".set-separation-model");
+  const modelDescEl = overlay.querySelector(".set-separation-model-desc");
   if (!durInput && !heightSel && !sampleRateSel && !portInput && !deviceSel && !qualitySel && !modelSel) return;
+
+  // Per-model blurbs (id -> description), filled from /api/config below. The
+  // description under the dropdown updates to match the selected model.
+  const modelDescriptions = {};
+  const showModelDesc = () => {
+    if (modelDescEl && modelSel) modelDescEl.textContent = modelDescriptions[modelSel.value] || "";
+  };
 
   // Last server-confirmed device choice, to revert the select when the server
   // rejects a forced device (e.g. CUDA not available on this machine).
@@ -1917,6 +1925,7 @@ async function wireGeneralSettings(overlay) {
             opt.value = m.id;
             opt.textContent = m.label;
             modelSel.appendChild(opt);
+            modelDescriptions[m.id] = m.description || "";
           }
         }
       }
@@ -1927,6 +1936,7 @@ async function wireGeneralSettings(overlay) {
     const r = await fetch("/api/settings", { cache: "no-store" });
     if (r.ok) apply(await r.json());
   } catch { /* leave blank */ }
+  showModelDesc();  // reflect the loaded model's blurb
 
   const post = async (patch) => {
     try {
@@ -1957,6 +1967,7 @@ async function wireGeneralSettings(overlay) {
     post({ separation_quality: qualitySel.value });
   });
   modelSel?.addEventListener("change", async () => {
+    showModelDesc();  // instant: update the blurb to the picked model
     await post({ separation_model: modelSel.value });
     // The model determines which stems the import UI can offer -- re-fetch the
     // active-stem set and refresh the chips so they match the new model.
@@ -2217,12 +2228,10 @@ function openLibraryEditor() {
           </div>
         </div>
         <div class="settings-section">
-          <div class="settings-row">
-            <div class="settings-row-text">
-              <div class="settings-row-title">Separation model</div>
-              <div class="settings-row-desc">Demucs (6 stems) is the default. BS-Roformer is higher quality (6 stems); the Vocal Roformer isolates just vocals + instrumental. Roformer models fetch a model file (~700–900 MB) on first use.</div>
-            </div>
-            <select class="settings-select set-separation-model" aria-label="Separation model"></select>
+          <div class="settings-row settings-row-stacked">
+            <div class="settings-row-title">Separation model</div>
+            <select class="settings-select settings-select-wide set-separation-model" aria-label="Separation model"></select>
+            <div class="settings-row-desc set-separation-model-desc"></div>
           </div>
         </div>
         <div class="settings-section">

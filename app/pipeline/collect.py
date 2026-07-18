@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 
 from app.core.config import (
-    DEMUCS_MODEL,
     FAILED_TTL_SECONDS,
     JOB_TTL_SECONDS,
     STEM_NAMES,
@@ -72,10 +71,14 @@ _TERMINAL = frozenset(("done", "error", "cancelled"))
 
 
 def collect(job: Job, stems_root: Path, job_dir: Path) -> list[str]:
-    """Move Demucs-emitted stems into the job's stems/ dir and clean up
-    the demucs intermediate dir. Does NOT delete the source download --
+    """Move separator-emitted stems into the job's stems/ dir and clean up
+    the intermediate model dir. Does NOT delete the source download --
     cleanup_source() is called by the runner after any post-processing
-    that needs to re-encode the source (e.g. building original.wav)."""
+    that needs to re-encode the source (e.g. building original.wav).
+
+    stems_root is `job_dir / <model subdir> / <source stem>` for both the
+    demucs and roformer backends, so the intermediate dir to remove is its
+    parent -- no need to know which model produced it."""
     target_dir = job_dir / "stems"
     target_dir.mkdir(exist_ok=True)
     found: list[str] = []
@@ -84,9 +87,9 @@ def collect(job: Job, stems_root: Path, job_dir: Path) -> list[str]:
         if src.exists():
             shutil.move(str(src), target_dir / f"{name}.wav")
             found.append(name)
-    _rmtree(job_dir / DEMUCS_MODEL)
+    _rmtree(stems_root.parent)
     if not found:
-        raise RuntimeError("no stems produced by demucs")
+        raise RuntimeError("no stems produced by separation")
     return found
 
 

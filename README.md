@@ -240,6 +240,22 @@ uv sync
 uv run uvicorn app.main:app --reload
 ```
 
+#### Optional: higher-quality BS-Roformer model
+
+StemDeck ships with Demucs `htdemucs_6s` by default. A higher-quality 6-stem
+model, **BS-Roformer-SW** (run via [audio-separator](https://github.com/nomadkaraoke/python-audio-separator)),
+is available as an opt-in extra. It produces cleaner stems — notably a usable
+piano — at similar speed on a GPU. Install the extra, then pick it under
+**Settings → Separation model**:
+
+```sh
+uv sync --extra roformer
+```
+
+The ~700 MB model downloads automatically on first use and is cached under the
+app's models directory. On Linux/Windows the extra includes a CUDA-12-compatible
+`onnxruntime-gpu`; the base install is unaffected if you don't add the extra.
+
 #### Docker
 
 ```sh

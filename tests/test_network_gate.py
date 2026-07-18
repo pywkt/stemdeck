@@ -112,6 +112,8 @@ def _isolated_settings(monkeypatch, tmp_path):
     monkeypatch.setattr(settings_mod, "_SETTINGS_PATH", tmp_path / "settings.json")
     monkeypatch.setattr(settings_mod, "_state", None)
     monkeypatch.delenv("STEMDECK_DEMUCS_DEVICE", raising=False)
+    monkeypatch.delenv("STEMDECK_SEPARATION_QUALITY", raising=False)
+    monkeypatch.delenv("STEMDECK_SEPARATION_MODEL", raising=False)
 
 
 def test_demucs_device_defaults_to_auto_and_resolves(monkeypatch, _isolated_settings):
@@ -200,6 +202,36 @@ def test_separation_quality_api_round_trip_and_422(_isolated_settings):
         r = c.post("/api/settings", json={"separation_quality": "ultra"})
         assert r.status_code == 422
         assert c.get("/api/settings").json()["separation_quality"] == "best"  # unchanged
+
+
+# ── separation_model ──
+
+
+def test_separation_model_defaults_to_demucs(_isolated_settings):
+    assert settings_mod.get_separation_model() == "htdemucs_6s"
+
+
+def test_separation_model_env_seeds_default(monkeypatch, _isolated_settings):
+    monkeypatch.setenv("STEMDECK_SEPARATION_MODEL", "bs_roformer_sw")
+    assert settings_mod.get_separation_model() == "bs_roformer_sw"
+
+
+def test_separation_model_rejects_unknown_choice(_isolated_settings):
+    with pytest.raises(ValueError):
+        settings_mod.set_separation_model("magic")
+    assert settings_mod.get_separation_model() == "htdemucs_6s"  # nothing persisted
+
+
+def test_separation_model_api_round_trip_and_422(_isolated_settings):
+    with TestClient(app) as c:
+        assert c.get("/api/settings").json()["separation_model"] == "htdemucs_6s"
+        r = c.post("/api/settings", json={"separation_model": "bs_roformer_sw"})
+        assert r.status_code == 200
+        assert r.json()["separation_model"] == "bs_roformer_sw"
+        assert c.get("/api/settings").json()["separation_model"] == "bs_roformer_sw"
+        r = c.post("/api/settings", json={"separation_model": "magic"})
+        assert r.status_code == 422
+        assert c.get("/api/settings").json()["separation_model"] == "bs_roformer_sw"  # unchanged
 
 
 def test_gate_blocks_non_loopback_when_off():

@@ -40,6 +40,8 @@ htmlcov/
 data/
 jobs/
 cache/
+downloads/
+models/
 settings.json
 .run/
 .build

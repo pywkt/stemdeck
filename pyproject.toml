@@ -61,6 +61,20 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx>=0.27",
 ]
+# Optional higher-quality separator: BS-Roformer-SW (6-stem) via audio-separator.
+# Opt-in so the base install stays lean and the Roformer path never touches the
+# default Demucs pipeline. Install with: uv sync --extra roformer
+roformer = [
+    # Excludes Intel macOS (x86_64 darwin): the base install pins numpy<2 there
+    # for the legacy torch 2.2 wheel, but audio-separator requires numpy>=2, and
+    # that platform is a CPU-only dead end for Roformer anyway. Every real GPU
+    # target (Linux/Windows) and Apple Silicon resolve fine.
+    "audio-separator>=0.44; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    # onnxruntime-gpu 1.27+ links CUDA 13 and fails to import against the CUDA 12.x
+    # runtime this project's torch cu124 pin targets; 1.19.x links CUDA 12. GPU
+    # wheels are Linux/Windows only, so gate off macOS entirely.
+    "onnxruntime-gpu==1.19.2; sys_platform != 'darwin'",
+]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

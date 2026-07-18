@@ -77,6 +77,21 @@ FFPROBE_BIN = _env_path(
     FFMPEG_DIR / ("ffprobe.exe" if sys.platform.startswith("win") else "ffprobe"),
 )
 DEMUCS_MODEL = os.environ.get("STEMDECK_DEMUCS_MODEL", "htdemucs_6s").strip() or "htdemucs_6s"
+# BS-Roformer-SW: the optional 6-stem Roformer backend (run via audio-separator).
+# ROFORMER_MODEL is the checkpoint filename audio-separator resolves from its
+# catalog; ROFORMER_SUBDIR is the per-job stems directory name, mirroring how
+# DEMUCS_MODEL doubles as the demucs stems subdir. See app/pipeline/separate.py.
+ROFORMER_MODEL = "BS-Roformer-SW.ckpt"
+ROFORMER_SUBDIR = "bs_roformer_sw"
+
+
+def stems_subdir_for_model(separation_model: str) -> str:
+    """The job-dir subfolder a separation backend writes its <stem>.wav files
+    into: `job_dir / <this> / <source stem>`. Keeps separate() and collect()
+    from hardcoding DEMUCS_MODEL so the roformer path can coexist."""
+    return ROFORMER_SUBDIR if separation_model == "bs_roformer_sw" else DEMUCS_MODEL
+
+
 MAX_DURATION_SEC = max(60, _env_int("STEMDECK_MAX_DURATION_SEC", 1200))  # 20 min default
 JOB_TTL_SECONDS = max(300, _env_int("STEMDECK_JOB_TTL_SECONDS", 24 * 3600))  # 24 h default
 # TTL for quarantined failed-job dirs (jobs/failed/<id>, kept for diagnostics).

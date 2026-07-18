@@ -11,10 +11,10 @@ import threading
 import time
 from pathlib import Path
 
-from app.core.config import DEMUCS_MODEL, TIMEOUT_DEMUCS_STALL
+from app.core.config import TIMEOUT_DEMUCS_STALL, stems_subdir_for_model
 from app.core.models import Job, JobCancelled, _set
 from app.core.registry import set_proc
-from app.core.settings import get_demucs_device, get_separation_quality
+from app.core.settings import get_demucs_device, get_separation_model, get_separation_quality
 from app.pipeline.errors import SeparationError, classify_failure
 
 logger = logging.getLogger("stemdeck.pipeline")
@@ -32,16 +32,22 @@ _PCT_RE = re.compile(r"(\d{1,3})%")
 _worker: dict[str, object] = {}
 
 
-def _spawn_worker_cmd(device: str) -> list[str]:
-    """Build the persistent-worker invocation. Module-level seam so tests can
-    swap in a stub executable without touching the process-management
-    machinery (mirrors the old _demucs_cmd seam)."""
-    return [sys.executable, "-m", "app.pipeline.demucs_worker", device]
+def _spawn_worker_cmd(device: str, model: str) -> list[str]:
+    """Build the persistent-worker invocation for the selected backend. Module-
+    level seam so tests can swap in a stub executable without touching the
+    process-management machinery (mirrors the old _demucs_cmd seam)."""
+    worker_module = (
+        "app.pipeline.roformer_worker"
+        if model == "bs_roformer_sw"
+        else "app.pipeline.demucs_worker"
+    )
+    return [sys.executable, "-m", worker_module, device]
 
 
 def _kill_worker() -> None:
     proc = _worker.pop("proc", None)
     _worker.pop("device", None)
+    _worker.pop("model", None)
     if proc is not None and proc.poll() is None:
         proc.terminate()
         try:
@@ -50,12 +56,17 @@ def _kill_worker() -> None:
             proc.kill()
 
 
-def _get_worker(device: str) -> subprocess.Popen:
-    """Return a live worker bound to `device`, reusing the current one if it
-    already matches and is still alive, spawning fresh otherwise (first call,
-    a device change, or the previous worker died/was torn down)."""
+def _get_worker(device: str, model: str) -> subprocess.Popen:
+    """Return a live worker bound to `(model, device)`, reusing the current one
+    if it already matches and is still alive, spawning fresh otherwise (first
+    call, a model or device change, or the previous worker died/was torn down)."""
     proc = _worker.get("proc")
-    if proc is not None and _worker.get("device") == device and proc.poll() is None:
+    if (
+        proc is not None
+        and _worker.get("device") == device
+        and _worker.get("model") == model
+        and proc.poll() is None
+    ):
         return proc
     _kill_worker()
 
@@ -69,7 +80,7 @@ def _get_worker(device: str) -> subprocess.Popen:
         pass
 
     proc = subprocess.Popen(
-        _spawn_worker_cmd(device),
+        _spawn_worker_cmd(device, model),
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
@@ -79,23 +90,29 @@ def _get_worker(device: str) -> subprocess.Popen:
     )
     _worker["proc"] = proc
     _worker["device"] = device
+    _worker["model"] = model
     return proc
 
 
-def _run_demucs(job: Job, source: Path, job_dir: Path, device: str) -> tuple[int, list[str]]:
-    """One demucs job dispatched to the persistent worker for `device`:
-    reuse-or-spawn, stream progress, watchdog stalls.
+def _run_demucs(
+    job: Job, source: Path, job_dir: Path, device: str, model: str
+) -> tuple[int, list[str]]:
+    """One separation job dispatched to the persistent worker for
+    `(model, device)`: reuse-or-spawn, stream progress, watchdog stalls.
 
     Returns (returncode, stderr_tail). Raises JobCancelled when the exit was
     caused by POST /cancel. The retry policy lives in separate()."""
     spawn_at = time.monotonic()
-    proc = _get_worker(device)
+    proc = _get_worker(device, model)
     if proc.stdin is None or proc.stderr is None:
-        raise RuntimeError("demucs worker has no stdin/stderr pipe")
+        raise RuntimeError("separation worker has no stdin/stderr pipe")
     set_proc(job.id, proc)
 
-    shifts = 2 if get_separation_quality() == "best" else 1
-    req = json.dumps({"source": str(source), "job_dir": str(job_dir), "shifts": shifts}) + "\n"
+    payload = {"source": str(source), "job_dir": str(job_dir)}
+    if model != "bs_roformer_sw":
+        # shift-averaging is a demucs-only knob; the Roformer worker ignores it.
+        payload["shifts"] = 2 if get_separation_quality() == "best" else 1
+    req = json.dumps(payload) + "\n"
     try:
         proc.stdin.write(req)
         proc.stdin.flush()
@@ -214,14 +231,17 @@ def separate(job: Job, source: Path, job_dir: Path) -> Path:
     explains itself."""
     _set(job, status="separating", progress=0.0, stage="Separating stems...")
 
-    # Read the device fresh per job (not a frozen import) so a Settings change
-    # applies to the next separation without a restart. Recorded on the job for
-    # the completion summary / metadata / failure quarantine.
+    # Read the device and model fresh per job (not frozen imports) so a Settings
+    # change applies to the next separation without a restart. Recorded on the
+    # job for the completion summary / metadata / failure quarantine.
     device = get_demucs_device()
+    model = get_separation_model()
+    subdir = stems_subdir_for_model(model)
     job.compute_device = device
-    logger.info("[%s] separating on device=%s", job.id, device)
+    job.separation_model = model
+    logger.info("[%s] separating on device=%s model=%s", job.id, device, model)
 
-    rc, tail = _run_demucs(job, source, job_dir, device)
+    rc, tail = _run_demucs(job, source, job_dir, device, model)
 
     if rc != 0 and device != "cpu":
         cause = classify_failure("\n".join(tail))
@@ -235,12 +255,12 @@ def separate(job: Job, source: Path, job_dir: Path) -> Path:
         )
         # Partial output from the failed attempt must not be mistaken for
         # results by collect(); CPU restarts from scratch, so does progress.
-        shutil.rmtree(job_dir / DEMUCS_MODEL, ignore_errors=True)
+        shutil.rmtree(job_dir / subdir, ignore_errors=True)
         _set(job, progress=0.0, stage="GPU failed — retrying on CPU (slower)...")
         job.gpu_fallback = True
         job.compute_device = f"cpu (fallback from {device})"
         first_tail = tail
-        rc, tail = _run_demucs(job, source, job_dir, "cpu")
+        rc, tail = _run_demucs(job, source, job_dir, "cpu", model)
         if rc != 0:
             combined = [
                 f"--- attempt on {device} ---",
@@ -261,7 +281,9 @@ def separate(job: Job, source: Path, job_dir: Path) -> Path:
         # failure quarantine can preserve the evidence (#277).
         raise SeparationError(f"demucs failed: {last}", tail=tail[-40:], device=device)
 
-    stems_root = job_dir / DEMUCS_MODEL / source.stem
+    stems_root = job_dir / subdir / source.stem
     if not stems_root.is_dir():
-        raise SeparationError(f"demucs output not found at {stems_root}", device=job.compute_device)
+        raise SeparationError(
+            f"separation output not found at {stems_root}", device=job.compute_device
+        )
     return stems_root

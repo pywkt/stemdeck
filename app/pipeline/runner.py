@@ -226,6 +226,7 @@ def _write_metadata(job: Job, job_dir: Path) -> None:
         "tags": job.tags,
         "has_video": job.has_video,
         "compute_device": job.compute_device,
+        "separation_model": job.separation_model,
         "gpu_fallback": job.gpu_fallback,
         "stage_timings": job.stage_timings,
     }
@@ -264,7 +265,7 @@ def _quarantine_failed_job(job: Job, job_dir: Path, jobs_dir: Path, exc: Excepti
             f"source: {job.source_url or '(unknown)'}",
             f"stage: {job.stage_message}",
             f"device: {job.compute_device or getattr(exc, 'device', None) or '(not reached)'}",
-            f"model: {DEMUCS_MODEL}",
+            f"model: {job.separation_model or DEMUCS_MODEL}",
             f"cause: {cause}",
             f"timings: {json.dumps(job.stage_timings) if job.stage_timings else '(none)'}",
             f"exception: {exc!r}",
@@ -333,7 +334,7 @@ async def _run_async(
         "[%s] done device=%s model=%s %s total=%.1fs",
         job.id,
         job.compute_device or "n/a",
-        DEMUCS_MODEL,
+        job.separation_model or DEMUCS_MODEL,
         " ".join(f"{k}={v}s" for k, v in t.items()),
         sum(t.values()),
     )

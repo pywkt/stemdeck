@@ -39,6 +39,7 @@ from app.core.settings import (
     get_export_sample_rate,
     get_max_duration_sec,
     get_port,
+    get_separation_model,
     get_separation_quality,
     get_video_max_height,
     set_allow_network,
@@ -46,6 +47,7 @@ from app.core.settings import (
     set_export_sample_rate,
     set_max_duration_sec,
     set_port,
+    set_separation_model,
     set_separation_quality,
     set_video_max_height,
 )
@@ -262,6 +264,7 @@ def _settings_payload() -> dict[str, object]:
         "video_max_height": get_video_max_height(),
         "export_sample_rate": get_export_sample_rate(),
         "separation_quality": get_separation_quality(),
+        "separation_model": get_separation_model(),
         "port": get_port(),
         # The user's choice ("auto" | "cuda" | "mps" | "cpu") drives the UI
         # select; the resolved value shows what jobs will actually run on;
@@ -321,6 +324,11 @@ async def update_settings(request: Request) -> dict[str, object]:
     if "separation_quality" in body:
         try:
             set_separation_quality(str(body["separation_quality"]))
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from None
+    if "separation_model" in body:
+        try:
+            set_separation_model(str(body["separation_model"]))
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from None
     return _settings_payload()

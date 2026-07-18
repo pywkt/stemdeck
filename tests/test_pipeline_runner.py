@@ -198,6 +198,7 @@ async def test_pipeline_success_logs_timing_summary(tmp_path: Path, caplog):
     def fake_stages(j, url, job_dir):
         j.stage_timings = {"download": 2.0, "analyze": 1.0, "separate": 30.0, "post": 3.5}
         j.compute_device = "cpu"
+        j.separation_model = "bs_roformer_sw"
 
     with (
         patch("app.pipeline.runner._run_blocking", side_effect=fake_stages),
@@ -208,13 +209,15 @@ async def test_pipeline_success_logs_timing_summary(tmp_path: Path, caplog):
     assert job.status == "done"
     summary = next(r.message for r in caplog.records if "done device=" in r.message)
     assert "device=cpu" in summary
+    assert "model=bs_roformer_sw" in summary
     assert "separate=30.0s" in summary
     assert "total=36.5s" in summary
-    # Timings + device persist into metadata.json for later diagnostics.
+    # Timings + device + model persist into metadata.json for later diagnostics.
     import json as _json
 
     meta = _json.loads((tmp_path / job.id / "metadata.json").read_text(encoding="utf-8"))
     assert meta["compute_device"] == "cpu"
+    assert meta["separation_model"] == "bs_roformer_sw"
     assert meta["stage_timings"]["separate"] == 30.0
 
 

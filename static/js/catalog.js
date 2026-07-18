@@ -1859,7 +1859,8 @@ async function wireGeneralSettings(overlay) {
   const deviceSel = overlay.querySelector(".set-demucs-device");
   const deviceResolved = overlay.querySelector(".set-demucs-resolved");
   const qualitySel = overlay.querySelector(".set-separation-quality");
-  if (!durInput && !heightSel && !sampleRateSel && !portInput && !deviceSel && !qualitySel) return;
+  const modelSel = overlay.querySelector(".set-separation-model");
+  if (!durInput && !heightSel && !sampleRateSel && !portInput && !deviceSel && !qualitySel && !modelSel) return;
 
   // Last server-confirmed device choice, to revert the select when the server
   // rejects a forced device (e.g. CUDA not available on this machine).
@@ -1871,6 +1872,7 @@ async function wireGeneralSettings(overlay) {
     if (sampleRateSel && d.export_sample_rate) sampleRateSel.value = String(d.export_sample_rate);
     if (portInput && d.port) portInput.value = String(d.port);
     if (qualitySel && d.separation_quality) qualitySel.value = d.separation_quality;
+    if (modelSel && d.separation_model) modelSel.value = d.separation_model;
     if (deviceSel) {
       // Gray out devices this machine can't use (Auto and CPU are always
       // available). Label disabled options so it's clear WHY they're greyed.
@@ -1933,6 +1935,9 @@ async function wireGeneralSettings(overlay) {
   });
   qualitySel?.addEventListener("change", () => {
     post({ separation_quality: qualitySel.value });
+  });
+  modelSel?.addEventListener("change", () => {
+    post({ separation_model: modelSel.value });
   });
   // Compute device needs its own POST path: unlike the clamped numeric
   // settings, the server can REJECT a forced device (422 with a reason, e.g.
@@ -2188,8 +2193,20 @@ function openLibraryEditor() {
         <div class="settings-section">
           <div class="settings-row">
             <div class="settings-row-text">
+              <div class="settings-row-title">Separation model</div>
+              <div class="settings-row-desc">Demucs is the default 6-stem model. BS-Roformer is higher quality but needs the optional model download (~700 MB, fetched on first use).</div>
+            </div>
+            <select class="settings-select set-separation-model" aria-label="Separation model">
+              <option value="htdemucs_6s">Demucs (htdemucs_6s)</option>
+              <option value="bs_roformer_sw">BS-Roformer (higher quality)</option>
+            </select>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-row">
+            <div class="settings-row-text">
               <div class="settings-row-title">Separation quality</div>
-              <div class="settings-row-desc">Best runs the separator twice with randomized shifts and averages the result — cleaner stems, twice the time.</div>
+              <div class="settings-row-desc">Best runs the separator twice with randomized shifts and averages the result — cleaner stems, twice the time. Applies to the Demucs model only.</div>
             </div>
             <select class="settings-select set-separation-quality" aria-label="Separation quality">
               <option value="standard">Standard</option>

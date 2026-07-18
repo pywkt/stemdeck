@@ -9,6 +9,7 @@ at startup), so the Settings UI can change them without a restart:
 - `export_sample_rate` — sample rate for exported mixes/regions (WAV/FLAC/MP3).
 - `demucs_device`     — compute device for separation: auto | cuda | mps | cpu.
 - `separation_quality` — demucs shift-averaging: standard | best (2x slower).
+- `separation_model`  — separator backend: htdemucs_6s | bs_roformer_sw.
 
 Defaults fall back to the config.py constants (which honor their env vars), so
 nothing changes until the user overrides a value.
@@ -256,5 +257,37 @@ def set_separation_quality(value: str) -> str:
         raise ValueError("separation_quality must be one of: " + ", ".join(_QUALITY_CHOICES))
     with _LOCK:
         _ensure()["separation_quality"] = choice
+        _save()
+        return choice
+
+
+# ── separation_model ──
+# Which neural separator produces the stems. "htdemucs_6s" (default) is the
+# Demucs 6-stem model that has always shipped. "bs_roformer_sw" is the 6-stem
+# BS-Roformer-SW model run via the `audio-separator` package -- higher quality
+# on the shared stems and a usable piano, but it needs the optional [roformer]
+# dependency extra and a one-time model download. Read live per job
+# (app/pipeline/separate.py), so a change applies to the NEXT separation without
+# a restart. STEMDECK_SEPARATION_MODEL seeds the default for env-based setups.
+_MODEL_CHOICES = ("htdemucs_6s", "bs_roformer_sw")
+
+
+def _default_separation_model() -> str:
+    env = os.environ.get("STEMDECK_SEPARATION_MODEL", "").strip().lower()
+    return env if env in _MODEL_CHOICES else "htdemucs_6s"
+
+
+def get_separation_model() -> str:
+    with _LOCK:
+        v = _ensure().get("separation_model")
+        return v if isinstance(v, str) and v in _MODEL_CHOICES else _default_separation_model()
+
+
+def set_separation_model(value: str) -> str:
+    choice = (value or "").strip().lower()
+    if choice not in _MODEL_CHOICES:
+        raise ValueError("separation_model must be one of: " + ", ".join(_MODEL_CHOICES))
+    with _LOCK:
+        _ensure()["separation_model"] = choice
         _save()
         return choice

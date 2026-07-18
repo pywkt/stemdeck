@@ -49,7 +49,7 @@ def _stub_spawns(fail_devices: set[str], calls: list[str]):
     worker process (not per dispatched job) -- reuse across jobs on the same
     device means fewer calls than jobs, which the reuse tests assert on."""
 
-    def fake_spawn(device: str) -> list[str]:
+    def fake_spawn(device: str, model: str) -> list[str]:
         calls.append(device)
         code = _FAILING_WORKER if device in fail_devices else _SUCCESS_WORKER
         return [sys.executable, "-c", code]
@@ -111,7 +111,7 @@ for line in sys.stdin:
 """
     monkeypatch.setattr(sep_mod, "get_demucs_device", lambda: "cpu")
     monkeypatch.setattr(
-        sep_mod, "_spawn_worker_cmd", lambda device: [sys.executable, "-c", echo_worker]
+        sep_mod, "_spawn_worker_cmd", lambda device, model: [sys.executable, "-c", echo_worker]
     )
 
     sep_mod.separate(Job(id="abcdefabc277"), tmp_path / "source.wav", tmp_path)
@@ -134,7 +134,7 @@ for line in sys.stdin:
     monkeypatch.setattr(sep_mod, "get_separation_quality", lambda: "best")
     monkeypatch.setattr(sep_mod, "get_demucs_device", lambda: "cpu")
     monkeypatch.setattr(
-        sep_mod, "_spawn_worker_cmd", lambda device: [sys.executable, "-c", echo_worker]
+        sep_mod, "_spawn_worker_cmd", lambda device, model: [sys.executable, "-c", echo_worker]
     )
 
     sep_mod.separate(Job(id="abcdefabc278"), tmp_path / "source.wav", tmp_path)
@@ -215,10 +215,10 @@ def test_cancel_during_gpu_attempt_skips_fallback(job, tmp_path, monkeypatch):
 def test_partial_gpu_output_cleared_before_retry(job, tmp_path, monkeypatch):
     """A failed GPU attempt's partial stems must not leak into the CPU run."""
     calls: list[str] = []
-    marker = tmp_path / sep_mod.DEMUCS_MODEL / "partial-garbage.wav"
+    marker = tmp_path / "htdemucs_6s" / "partial-garbage.wav"
     marker_repr = str(marker).replace("\\", "\\\\")
 
-    def fake_spawn(device: str) -> list[str]:
+    def fake_spawn(device: str, model: str) -> list[str]:
         calls.append(device)
         if device == "cuda":
             # Simulate the worker dying after writing partial output.
@@ -304,3 +304,84 @@ def test_cancel_kills_worker_next_job_spawns_fresh(tmp_path, monkeypatch):
     sep_mod.separate(Job(id="abcdefabc331"), tmp_path / "source.wav", tmp_path)
 
     assert calls == ["cpu", "cpu"]  # two spawns: cancelled, then fresh
+
+
+# ─── separation model selection ────────────────────────────────────────────
+
+
+def test_worker_respawned_on_model_change(tmp_path, monkeypatch):
+    """Switching the separation model tears down the current worker and spawns
+    the other backend, exactly like a device change -- the reuse cache is keyed
+    on (model, device), not device alone."""
+    spawned: list[tuple[str, str]] = []
+    monkeypatch.setattr(sep_mod, "get_demucs_device", lambda: "cpu")
+
+    def fake_spawn(device: str, model: str) -> list[str]:
+        spawned.append((device, model))
+        # Write stems into the subdir the router expects for this model, so
+        # collect()'s lookup succeeds for both backends.
+        subdir = "bs_roformer_sw" if model == "bs_roformer_sw" else "htdemucs_6s"
+        worker = f"""
+import sys, json, os
+for line in sys.stdin:
+    req = json.loads(line)
+    d = os.path.join(req["job_dir"], "{subdir}", "source")
+    os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, "vocals.wav"), "wb").write(b"RIFF")
+    sys.stderr.write("100%\\n@@DONE@@\\n")
+    sys.stderr.flush()
+"""
+        return [sys.executable, "-c", worker]
+
+    monkeypatch.setattr(sep_mod, "_spawn_worker_cmd", fake_spawn)
+
+    models = iter(["htdemucs_6s", "bs_roformer_sw", "bs_roformer_sw"])
+    monkeypatch.setattr(sep_mod, "get_separation_model", lambda: next(models))
+
+    for i in range(3):
+        (tmp_path / "source.wav").write_bytes(b"RIFF")
+        sep_mod.separate(Job(id=f"abcdefabc34{i}"), tmp_path / "source.wav", tmp_path)
+
+    # demucs then roformer (respawn on change), then roformer reused (no respawn).
+    assert spawned == [("cpu", "htdemucs_6s"), ("cpu", "bs_roformer_sw")]
+
+
+def test_roformer_dispatch_selects_worker_and_omits_shifts(tmp_path, monkeypatch):
+    """The bs_roformer_sw model routes to the roformer worker module and sends
+    no `shifts` key (a demucs-only knob). The stub echoes what it received."""
+    spawned_argv: list[list[str]] = []
+    echo_worker = """
+import sys, json, os
+for line in sys.stdin:
+    req = json.loads(line)
+    d = os.path.join(req["job_dir"], "bs_roformer_sw", "source")
+    os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, "vocals.wav"), "wb").write(b"RIFF")
+    open(os.path.join(req["job_dir"], "req.json"), "w").write(json.dumps(req))
+    sys.stderr.write("100%\\n@@DONE@@\\n")
+    sys.stderr.flush()
+"""
+
+    # Capture the router's real module choice before swapping in the echo stub.
+    real_spawn = sep_mod._spawn_worker_cmd
+
+    def fake_spawn(device: str, model: str) -> list[str]:
+        spawned_argv.append(real_spawn(device, model))
+        return [sys.executable, "-c", echo_worker]
+
+    monkeypatch.setattr(sep_mod, "get_demucs_device", lambda: "cpu")
+    monkeypatch.setattr(sep_mod, "get_separation_model", lambda: "bs_roformer_sw")
+    monkeypatch.setattr(sep_mod, "_spawn_worker_cmd", fake_spawn)
+
+    stems_root = sep_mod.separate(Job(id="abcdefabc350"), tmp_path / "source.wav", tmp_path)
+
+    # Routed to the roformer worker module, not demucs.
+    assert any("roformer_worker" in " ".join(argv) for argv in spawned_argv)
+    # Stems landed under the roformer subdir.
+    assert stems_root == tmp_path / "bs_roformer_sw" / "source"
+    assert (stems_root / "vocals.wav").is_file()
+    # No demucs-only shifts key was dispatched to the roformer worker.
+    import json as _json
+
+    req = _json.loads((tmp_path / "req.json").read_text())
+    assert "shifts" not in req

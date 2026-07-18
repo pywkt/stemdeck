@@ -69,6 +69,10 @@ class Job:
     # Device the separation actually ran on ("cuda" / "mps" / "cpu"), recorded
     # per job for diagnostics -- settings may change between jobs.
     compute_device: str | None = None
+    # Which separator backend produced the stems ("htdemucs_6s" /
+    # "bs_roformer_sw"), recorded per job -- the model setting may change
+    # between jobs, so this pins what this job actually ran.
+    separation_model: str | None = None
     # True when a GPU separation attempt failed and the job completed on the
     # CPU fallback (#276) -- kept loud in state/metadata so the fallback is
     # never silent (the #247 lesson).
@@ -115,6 +119,7 @@ class Job:
             "error": self.error,
             "error_detail": self.error_detail,
             "compute_device": self.compute_device,
+            "separation_model": self.separation_model,
             "gpu_fallback": self.gpu_fallback,
             "stage_timings": self.stage_timings,
             "created_at": self.created_at,

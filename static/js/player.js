@@ -1057,7 +1057,14 @@ export function wireUpAudio(jobId, stems, duration, thumbnail, mixUrl = null, ti
   const app = document.querySelector(".app");
   app?.classList.remove("is-import");
   app?.classList.remove("no-track");
-  setWaveformLoading(true);
+  // Pass the phrase explicitly rather than relying on setWaveformLoading's
+  // empty-textContent fallback: the import flow (job.js) shows the overlay with
+  // an explicit "" while a job runs, so by the time a finished track is opened
+  // the phrase element holds a blank string, not an empty one, and the fallback
+  // does not fire. The result was an overlay with an animation and no words --
+  // exactly when the wait is longest, opening a track whose stems still have to
+  // come down over the network.
+  setWaveformLoading(true, t("player.stillLoadingWaveform"));
   stopVuLoop();
   stopStemVuLoop();
   if (multitrack) {

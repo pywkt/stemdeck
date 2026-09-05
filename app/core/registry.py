@@ -309,23 +309,11 @@ def _recover_done_job(job_dir: Path) -> Job | None:
     stems_dir = job_dir / "stems"
     if not stems_dir.is_dir():
         return None
-    stems = [
-        {"name": name, "url": f"/api/jobs/{job_dir.name}/stems/{name}.wav"}
-        for name in ("original", *STEM_NAMES, *EXTRA_STEM_NAMES)
-        if (stems_dir / f"{name}.wav").is_file()
-    ]
-    if not stems:
-        return None
-    mix_url = None
-    if (stems_dir / "mix.wav").is_file():
-        mix_url = f"/api/jobs/{job_dir.name}/stems/mix.wav"
-    selected = [stem["name"] for stem in stems if stem["name"] in STEM_NAMES] or list(STEM_NAMES)
-    # A restart between the split finishing and its next registry persist
-    # would otherwise report the job as never split -- derive from disk the
-    # same way `stems` above does, so the recovered library entry doesn't
-    # regress (#275).
-    has_split = all((stems_dir / f"{name}.wav").is_file() for name in EXTRA_STEM_NAMES)
-    vocal_split = "done" if has_split else "none"
+    # Read metadata before scanning, because the stem set a job produced is not
+    # always all of STEM_NAMES: a two-stem vocal model makes vocals + other, and
+    # recovering it as six would resurrect four lanes whose files do not exist.
+    # Jobs written before this was persisted, and the crash-window dirs handled
+    # below, fall back to scanning the canonical superset.
     meta_path = job_dir / "metadata.json"
     meta: dict = {}
     if meta_path.is_file():
@@ -333,7 +321,31 @@ def _recover_done_job(job_dir: Path) -> Job | None:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             pass
-    else:
+    persisted = meta.get("stems")
+    produced = (
+        [s for s in persisted if isinstance(s, str)]
+        if isinstance(persisted, list) and persisted
+        else list(STEM_NAMES)
+    )
+    stems = [
+        {"name": name, "url": f"/api/jobs/{job_dir.name}/stems/{name}.wav"}
+        for name in ("original", *produced, *EXTRA_STEM_NAMES)
+        if (stems_dir / f"{name}.wav").is_file()
+    ]
+    if not stems:
+        return None
+    mix_url = None
+    if (stems_dir / "mix.wav").is_file():
+        mix_url = f"/api/jobs/{job_dir.name}/stems/mix.wav"
+    produced_set = set(produced)
+    selected = [s["name"] for s in stems if s["name"] in produced_set] or list(produced)
+    # A restart between the split finishing and its next registry persist
+    # would otherwise report the job as never split -- derive from disk the
+    # same way `stems` above does, so the recovered library entry doesn't
+    # regress (#275).
+    has_split = all((stems_dir / f"{name}.wav").is_file() for name in EXTRA_STEM_NAMES)
+    vocal_split = "done" if has_split else "none"
+    if not meta_path.is_file():
         # Crash window (#284): the process died between status=done and the
         # metadata write, leaving a complete stems dir that used to be
         # unrecoverable. Recover with a placeholder title and write a minimal
@@ -364,6 +376,7 @@ def _recover_done_job(job_dir: Path) -> Job | None:
         peak_db=meta.get("peak_db"),
         dynamic_range=meta.get("dynamic_range"),
         tempo_stability=meta.get("tempo_stability"),
+        separation_model=meta.get("separation_model"),
         stem_presence=meta.get("stem_presence"),
         sections=meta.get("sections"),
         sections_source=meta.get("sections_source"),

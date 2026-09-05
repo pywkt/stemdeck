@@ -8,12 +8,12 @@ import time
 from pathlib import Path
 
 from app.core.config import (
-    DEMUCS_MODEL,
     FAILED_TTL_SECONDS,
     JOB_TTL_SECONDS,
     STEM_NAMES,
     TIMEOUT_FFMPEG,
     ffmpeg_executable,
+    model_stems,
 )
 from app.core.models import Job
 from app.core.registry import all_jobs as registry_all
@@ -72,10 +72,14 @@ _TERMINAL = frozenset(("done", "error", "cancelled"))
 
 
 def collect(job: Job, stems_root: Path, job_dir: Path) -> list[str]:
-    """Move Demucs-emitted stems into the job's stems/ dir and clean up
-    the demucs intermediate dir. Does NOT delete the source download --
+    """Move separator-emitted stems into the job's stems/ dir and clean up the
+    intermediate model dir. Does NOT delete the source download --
     cleanup_source() is called by the runner after any post-processing
-    that needs to re-encode the source (e.g. building original.wav)."""
+    that needs to re-encode the source (e.g. building original.wav).
+
+    stems_root is `job_dir / <model subdir> / <source stem>` for every backend,
+    so the directory to remove afterwards is simply its parent -- no need to
+    know which model wrote it."""
     target_dir = job_dir / "stems"
     target_dir.mkdir(exist_ok=True)
     found: list[str] = []
@@ -84,9 +88,9 @@ def collect(job: Job, stems_root: Path, job_dir: Path) -> list[str]:
         if src.exists():
             shutil.move(str(src), target_dir / f"{name}.wav")
             found.append(name)
-    _rmtree(job_dir / DEMUCS_MODEL)
+    _rmtree(stems_root.parent)
     if not found:
-        raise RuntimeError("no stems produced by demucs")
+        raise RuntimeError("no stems produced by separation")
     return found
 
 
@@ -107,9 +111,16 @@ def make_original_track(job: Job, job_dir: Path, stems_dir: Path) -> Path | None
     if "original" were the raw source download (drum hits in original
     + isolated drums.wav = drums at 2x amplitude).
 
-    Skipped when the user kept all 6 stems (no complement to mix) or
-    when none of the unselected stem WAVs are on disk."""
-    unselected = [s for s in STEM_NAMES if s not in job.selected_stems]
+    Skipped when the user kept all of the model's stems (no complement to
+    mix) or when none of the unselected stem WAVs are on disk.
+
+    Also skipped for two-stem models: a vocal model's "other" already IS the
+    whole instrumental, so the complement of "vocals" is a duplicate of a file
+    the job already has."""
+    produced = model_stems(job.separation_model)
+    if len(produced) <= 2:
+        return None
+    unselected = [s for s in produced if s not in job.selected_stems]
     inputs = [stems_dir / f"{name}.wav" for name in unselected]
     inputs = [p for p in inputs if p.exists()]
     if not inputs:

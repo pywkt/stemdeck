@@ -126,7 +126,7 @@ def test_the_worker_is_spawned_with_the_parent_pid(monkeypatch):
     monkeypatch.setattr(separate, "_kill_worker", lambda: None)
     separate._worker.clear()
     try:
-        separate._get_worker("cpu")
+        separate._get_worker("cpu", "htdemucs_6s")
     finally:
         separate._worker.clear()
 

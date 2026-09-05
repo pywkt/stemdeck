@@ -49,7 +49,7 @@ def _stub_spawns(fail_devices: set[str], calls: list[str]):
     worker process (not per dispatched job) -- reuse across jobs on the same
     device means fewer calls than jobs, which the reuse tests assert on."""
 
-    def fake_spawn(device: str) -> list[str]:
+    def fake_spawn(device: str, model: str = "htdemucs_6s") -> list[str]:
         calls.append(device)
         code = _FAILING_WORKER if device in fail_devices else _SUCCESS_WORKER
         return [sys.executable, "-c", code]
@@ -111,7 +111,9 @@ for line in sys.stdin:
 """
     monkeypatch.setattr(sep_mod, "get_demucs_device", lambda: "cpu")
     monkeypatch.setattr(
-        sep_mod, "_spawn_worker_cmd", lambda device: [sys.executable, "-c", echo_worker]
+        sep_mod,
+        "_spawn_worker_cmd",
+        lambda device, model="htdemucs_6s": [sys.executable, "-c", echo_worker],
     )
 
     sep_mod.separate(Job(id="abcdefabc277"), tmp_path / "source.wav", tmp_path)
@@ -134,7 +136,9 @@ for line in sys.stdin:
     monkeypatch.setattr(sep_mod, "get_separation_quality", lambda: "best")
     monkeypatch.setattr(sep_mod, "get_demucs_device", lambda: "cpu")
     monkeypatch.setattr(
-        sep_mod, "_spawn_worker_cmd", lambda device: [sys.executable, "-c", echo_worker]
+        sep_mod,
+        "_spawn_worker_cmd",
+        lambda device, model="htdemucs_6s": [sys.executable, "-c", echo_worker],
     )
 
     sep_mod.separate(Job(id="abcdefabc278"), tmp_path / "source.wav", tmp_path)
@@ -215,10 +219,10 @@ def test_cancel_during_gpu_attempt_skips_fallback(job, tmp_path, monkeypatch):
 def test_partial_gpu_output_cleared_before_retry(job, tmp_path, monkeypatch):
     """A failed GPU attempt's partial stems must not leak into the CPU run."""
     calls: list[str] = []
-    marker = tmp_path / sep_mod.DEMUCS_MODEL / "partial-garbage.wav"
+    marker = tmp_path / sep_mod.model_subdir("htdemucs_6s") / "partial-garbage.wav"
     marker_repr = str(marker).replace("\\", "\\\\")
 
-    def fake_spawn(device: str) -> list[str]:
+    def fake_spawn(device: str, model: str = "htdemucs_6s") -> list[str]:
         calls.append(device)
         if device == "cuda":
             # Simulate the worker dying after writing partial output.

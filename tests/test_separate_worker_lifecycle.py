@@ -37,11 +37,11 @@ def test_an_exception_in_the_stream_loop_still_tears_the_worker_down(tmp_path, m
         stdin = None
         stderr = None
 
-    monkeypatch.setattr(_separate, "_get_worker", lambda device: _Boom())
+    monkeypatch.setattr(_separate, "_get_worker", lambda device, model="htdemucs_6s": _Boom())
 
     job = _job(status="separating")
     with pytest.raises(RuntimeError):
-        _separate._run_demucs(job, tmp_path / "s.wav", tmp_path, "cpu")
+        _separate._run_demucs(job, tmp_path / "s.wav", tmp_path, "cpu", "htdemucs_6s")
 
     assert killed, "a worker was left warm after an exception"
 
@@ -84,12 +84,14 @@ def test_an_exception_inside_the_read_loop_still_tears_the_worker_down(tmp_path,
     def _boom():
         raise OSError("broken pipe")
 
-    monkeypatch.setattr(_separate, "_get_worker", lambda device: _FakeProc(_boom))
+    monkeypatch.setattr(
+        _separate, "_get_worker", lambda device, model="htdemucs_6s": _FakeProc(_boom)
+    )
     monkeypatch.setattr(_separate, "set_proc", lambda *a, **kw: None)
 
     job = _job(status="separating")
     with pytest.raises(OSError):
-        _separate._run_demucs(job, tmp_path / "s.wav", tmp_path, "cpu")
+        _separate._run_demucs(job, tmp_path / "s.wav", tmp_path, "cpu", "htdemucs_6s")
 
     assert killed, "a worker whose CUDA state followed an exception stayed warm"
 
@@ -99,7 +101,7 @@ def test_cancel_between_the_gpu_attempt_and_the_cpu_fallback_is_honoured(tmp_pat
     # completion -- 10+ minutes -- while the UI showed "Cancelling".
     attempts = []
 
-    def _fake_run(job, source, job_dir, device):
+    def _fake_run(job, source, job_dir, device, model="htdemucs_6s"):
         attempts.append(device)
         if device != "cpu":
             job.cancel_requested = True  # the user cancels during the failure

@@ -300,6 +300,12 @@ def _write_metadata(job: Job, job_dir: Path) -> None:
         "has_video": job.has_video,
         "video_status": job.video_status,
         "compute_device": job.compute_device,
+        "separation_model": job.separation_model,
+        # The stem names this job actually produced. May be fewer than the
+        # canonical six (a two-stem vocal model), so orphan-dir recovery in
+        # registry._recover_done_job can restore the real set instead of
+        # assuming every job made all of STEM_NAMES.
+        "stems": [s["name"] for s in job.stems if s.get("name") not in ("original", "mix")],
         "gpu_fallback": job.gpu_fallback,
         "stage_timings": job.stage_timings,
     }
@@ -355,7 +361,7 @@ def _quarantine_failed_job(job: Job, job_dir: Path, jobs_dir: Path, exc: Excepti
             f"source: {job.source_url or '(unknown)'}",
             f"stage: {job.stage_message}",
             f"device: {job.compute_device or getattr(exc, 'device', None) or '(not reached)'}",
-            f"model: {DEMUCS_MODEL}",
+            f"model: {job.separation_model or DEMUCS_MODEL}",
             f"cause: {cause}",
             f"timings: {json.dumps(job.stage_timings) if job.stage_timings else '(none)'}",
             f"exception: {redact(repr(exc))}",
@@ -427,7 +433,7 @@ async def _run_async(
         "[%s] done device=%s model=%s %s total=%.1fs",
         job.id,
         job.compute_device or "n/a",
-        DEMUCS_MODEL,
+        job.separation_model or DEMUCS_MODEL,
         " ".join(f"{k}={v}s" for k, v in t.items()),
         sum(t.values()),
     )

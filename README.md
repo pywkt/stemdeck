@@ -263,6 +263,28 @@ uv run uvicorn app.main:app --reload --timeout-graceful-shutdown 5
 > for the import queue while a browser tab is on the app, so without it
 > Ctrl-C waits for that stream instead of exiting.
 
+#### Optional: GPU acceleration for the Roformer models
+
+StemDeck separates with Demucs `htdemucs_6s` by default. Two higher-quality
+alternatives are selectable under **Settings → Separation model**:
+
+- **BS-Roformer** — the same six stems, separated more cleanly (notably a
+  usable piano). Downloads ~700 MB on first use.
+- **Vocal Roformer** — two stems only: the cleanest vocal isolation available,
+  plus everything else as one instrumental track. Downloads ~900 MB.
+
+Both work out of the box, but run on the CPU, because the `onnxruntime` StemDeck
+ships is the CPU build. On an NVIDIA GPU, install the extra to swap in the GPU
+build:
+
+```sh
+uv sync --extra roformer
+```
+
+Checkpoints are cached under the app's models directory, so the download happens
+once. `Separation quality` applies to Demucs only — the Roformer models have no
+equivalent setting.
+
 #### Docker
 
 ```sh

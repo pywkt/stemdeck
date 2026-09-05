@@ -3333,13 +3333,15 @@ async function wireGeneralSettings(overlay) {
   const deviceSel = overlay.querySelector(".set-demucs-device");
   const deviceDesc = overlay.querySelector(".set-demucs-desc");
   const qualitySel = overlay.querySelector(".set-separation-quality");
+  const modelSel = overlay.querySelector(".set-separation-model");
+  const modelDesc = overlay.querySelector(".set-separation-model-desc");
   const cookiesInput = overlay.querySelector(".set-cookies-file");
   const cookiesMsg = overlay.querySelector(".cookies-file-msg");
   const autoDeleteInput = overlay.querySelector(".auto-delete-input");
   const autoDeleteDaysRow = overlay.querySelector(".auto-delete-days-row");
   const autoDeleteDays = overlay.querySelector(".set-auto-delete-days");
   const autoDeleteDaysDesc = overlay.querySelector(".auto-delete-days-desc");
-  if (!durInput && !playlistInput && !heightSel && !sampleRateSel && !portInput && !deviceSel && !qualitySel && !cookiesInput && !autoDeleteInput) return;
+  if (!durInput && !playlistInput && !heightSel && !sampleRateSel && !portInput && !deviceSel && !qualitySel && !modelSel && !cookiesInput && !autoDeleteInput) return;
 
   // Last server-confirmed device choice, to revert the select when the server
   // rejects a forced device (e.g. CUDA not available on this machine).
@@ -3368,6 +3370,7 @@ async function wireGeneralSettings(overlay) {
     if (sampleRateSel && d.export_sample_rate) sampleRateSel.value = String(d.export_sample_rate);
     if (portInput && d.port) portInput.value = String(d.port);
     if (qualitySel && d.separation_quality) qualitySel.value = d.separation_quality;
+    if (modelSel && d.separation_model) modelSel.value = d.separation_model;
     // Unset is the normal case, so read the key rather than truthiness --
     // clearing the field must survive the round trip and not be repopulated.
     if (cookiesInput && "cookies_file" in d) cookiesInput.value = d.cookies_file || "";
@@ -3429,9 +3432,34 @@ async function wireGeneralSettings(overlay) {
   digitsOnly(portInput);
   digitsOnly(autoDeleteDays);
 
+  // Options come from the registry via /api/config, so adding a model to
+  // SEPARATION_MODELS makes it appear here with its blurb and needs no edit to
+  // this file. The description below the dropdown tracks the selection.
+  const modelDescriptions = {};
+  const showModelDesc = () => {
+    if (modelDesc && modelSel) modelDesc.textContent = modelDescriptions[modelSel.value] || "";
+  };
+  if (modelSel) {
+    try {
+      const r = await fetch("/api/config", { cache: "no-store" });
+      if (r.ok) {
+        const cfg = await r.json();
+        if (Array.isArray(cfg.models) && cfg.models.length) {
+          modelSel.innerHTML = cfg.models
+            .map((m) => `<option value="${esc(m.id)}">${esc(m.label)}</option>`)
+            .join("");
+          for (const m of cfg.models) modelDescriptions[m.id] = m.description || "";
+        }
+      }
+    } catch (e) {
+      console.warn("[settings] could not load the separation models:", e);
+    }
+  }
+
   try {
     const r = await fetch("/api/settings", { cache: "no-store" });
     if (r.ok) apply(await r.json());
+    showModelDesc();
   } catch { /* leave blank */ }
 
   const post = async (patch) => {
@@ -3495,6 +3523,18 @@ async function wireGeneralSettings(overlay) {
   });
   qualitySel?.addEventListener("change", () => {
     post({ separation_quality: qualitySel.value });
+  });
+  modelSel?.addEventListener("change", async () => {
+    showModelDesc(); // instant, before the round trip
+    await post({ separation_model: modelSel.value });
+    // The model decides which stems exist, so the import chips have to be
+    // rebuilt: a two-stem model must not keep offering a drums chip it cannot
+    // produce. Imported lazily -- catalog.js is loaded by main.js, so a static
+    // import here would be circular.
+    const { syncStemNamesFromAPI } = await import("./constants.js");
+    const { applyActiveStems } = await import("./main.js");
+    await syncStemNamesFromAPI();
+    applyActiveStems();
   });
   autoDeleteInput?.addEventListener("change", () => {
     // Enable the days field immediately rather than waiting for the round
@@ -3951,8 +3991,17 @@ function openLibraryEditor() {
         <div class="settings-section">
           <div class="settings-row">
             <div class="settings-row-text">
+              <div class="settings-row-title" data-i18n="settings.separationModel.title">Separation model</div>
+              <div class="settings-row-desc set-separation-model-desc"></div>
+            </div>
+            <select class="settings-select settings-select-wide set-separation-model" aria-label="Separation model" data-i18n-aria-label="settings.separationModel.title"></select>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-row">
+            <div class="settings-row-text">
               <div class="settings-row-title" data-i18n="settings.quality.title">Separation quality</div>
-              <div class="settings-row-desc" data-i18n="settings.quality.desc">Best runs the separator twice with randomized shifts and averages the result — cleaner stems, twice the time.</div>
+              <div class="settings-row-desc" data-i18n="settings.quality.desc">Best runs the separator twice with randomized shifts and averages the result — cleaner stems, twice the time. Applies to the Demucs model only.</div>
             </div>
             <select class="settings-select settings-select-wide set-separation-quality" aria-label="Separation quality" data-i18n-aria-label="settings.quality.title">
               <option value="standard" data-i18n="settings.quality.standard">Standard</option>

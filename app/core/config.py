@@ -255,6 +255,98 @@ def js_solver_available() -> bool:
 
 
 DEMUCS_MODEL = os.environ.get("STEMDECK_DEMUCS_MODEL", "htdemucs_6s").strip() or "htdemucs_6s"
+
+# ── separation model registry ──
+# Every selectable separator, keyed by its `separation_model` setting id. Each
+# entry declares:
+#   backend    -- "demucs" (app/pipeline/demucs_worker) or "roformer"
+#                 (app/pipeline/roformer_worker, needs the [roformer] extra)
+#   checkpoint -- what the backend loads: a demucs bag name, or the
+#                 audio-separator catalog filename for roformer
+#   stems      -- the stem names this model produces, in canonical order. NOT
+#                 every model makes all six: a vocal model makes vocals+other,
+#                 where "other" is the whole instrumental. collect(), the API,
+#                 and the mixer all derive a job's lane set from this.
+#   subdir     -- per-job stems directory (job_dir/<subdir>/<source stem>), so
+#                 two backends can coexist without one reading the other's
+#                 partial output
+#   label/description -- shown in the Settings dropdown
+#
+# Stem names must stay within STEM_NAMES: the colour, label and ordering maps
+# are keyed by it, and a model emitting a genuinely new name would have to
+# widen those too.
+SEPARATION_MODELS: dict[str, dict] = {
+    "htdemucs_6s": {
+        "backend": "demucs",
+        "checkpoint": DEMUCS_MODEL,
+        "stems": STEM_NAMES,
+        "subdir": DEMUCS_MODEL,
+        "label": "Demucs (6 stems)",
+        "description": (
+            "Meta's Demucs htdemucs_6s. Six stems, no extra download, and the "
+            "fastest of the three. Piano and guitar are usable but the weakest."
+        ),
+    },
+    "bs_roformer_sw": {
+        "backend": "roformer",
+        "checkpoint": "BS-Roformer-SW.ckpt",
+        "stems": STEM_NAMES,
+        "subdir": "bs_roformer_sw",
+        "label": "BS-Roformer (6 stems, higher quality)",
+        "description": (
+            "The same six stems as Demucs, separated noticeably more cleanly -- "
+            "particularly the vocals, and a piano that is actually usable. "
+            "Slower, and downloads about 700 MB the first time it runs."
+        ),
+    },
+    "kim_ft_vocal": {
+        "backend": "roformer",
+        "checkpoint": "mel_band_roformer_kim_ft_unwa.ckpt",
+        # "other" here is the entire instrumental, not Demucs's leftovers.
+        "stems": ("vocals", "other"),
+        "subdir": "kim_ft_vocal",
+        "label": "Vocal Roformer (vocals only, highest quality)",
+        "description": (
+            "Two stems: the cleanest vocal isolation available, and everything "
+            "else as one instrumental track. Choose it when the vocal is what "
+            "matters, or for a karaoke track. Downloads about 900 MB on first use."
+        ),
+    },
+}
+
+DEFAULT_SEPARATION_MODEL = "htdemucs_6s"
+
+
+def _model_entry(separation_model: str | None) -> dict:
+    """Registry entry for a model id, falling back to the default rather than
+    raising: a persisted id can outlive the model it names (a settings file
+    written by a newer build, or an entry removed here), and a job must still
+    run."""
+    return SEPARATION_MODELS.get(
+        separation_model or "", SEPARATION_MODELS[DEFAULT_SEPARATION_MODEL]
+    )
+
+
+def model_backend(separation_model: str | None) -> str:
+    return _model_entry(separation_model)["backend"]
+
+
+def model_checkpoint(separation_model: str | None) -> str:
+    return _model_entry(separation_model)["checkpoint"]
+
+
+def model_stems(separation_model: str | None) -> tuple[str, ...]:
+    """The stem names a model produces -- all six, or just vocals+other."""
+    return tuple(_model_entry(separation_model)["stems"])
+
+
+def model_subdir(separation_model: str | None) -> str:
+    """The job-dir subfolder the backend writes <stem>.wav into, as
+    `job_dir / <this> / <source stem>`. Keeps separate() and collect() from
+    hardcoding one model's directory name."""
+    return _model_entry(separation_model)["subdir"]
+
+
 MAX_DURATION_SEC = max(60, _env_int("STEMDECK_MAX_DURATION_SEC", 1200))  # 20 min default
 JOB_TTL_SECONDS = max(300, _env_int("STEMDECK_JOB_TTL_SECONDS", 24 * 3600))  # 24 h default
 # TTL for quarantined failed-job dirs (jobs/failed/<id>, kept for diagnostics).

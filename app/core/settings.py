@@ -11,6 +11,7 @@ at startup), so the Settings UI can change them without a restart:
 - `export_sample_rate` — sample rate for exported mixes/regions (WAV/FLAC/MP3).
 - `demucs_device`     — compute device for separation: auto | cuda | mps | cpu.
 - `separation_quality` — demucs shift-averaging: standard | best (2x slower).
+- `separation_model`   — which separator produces the stems.
 - `cookies_file`      — optional cookies.txt handed to yt-dlp for YouTube.
 - `auto_delete_jobs`  — whether finished jobs are deleted after a while (off).
 - `auto_delete_days`  — how long they are kept when that is on.
@@ -31,8 +32,10 @@ from pathlib import Path
 
 from app.core.config import (
     DATA_DIR,
+    DEFAULT_SEPARATION_MODEL,
     MAX_DURATION_SEC,
     PLAYLIST_MAX_ITEMS,
+    SEPARATION_MODELS,
     VIDEO_MAX_HEIGHT,
     available_torch_devices,
     detect_torch_device,
@@ -589,5 +592,36 @@ def set_separation_quality(value: str) -> str:
         raise ValueError("separation_quality must be one of: " + ", ".join(_QUALITY_CHOICES))
     with _LOCK:
         _ensure()["separation_quality"] = choice
+        _save()
+        return choice
+
+
+# ── separation_model ──
+# Which neural separator produces a job's stems. The choices are the registry
+# in config.py (SEPARATION_MODELS): Demucs by default, plus the Roformer models,
+# which need the optional [roformer] extra and download their checkpoint on
+# first use. Read fresh per job in app/pipeline/separate.py, so a change applies
+# to the next separation without a restart. STEMDECK_SEPARATION_MODEL seeds the
+# default for env-configured deployments.
+_MODEL_CHOICES = tuple(SEPARATION_MODELS)
+
+
+def _default_separation_model() -> str:
+    env = os.environ.get("STEMDECK_SEPARATION_MODEL", "").strip().lower()
+    return env if env in _MODEL_CHOICES else DEFAULT_SEPARATION_MODEL
+
+
+def get_separation_model() -> str:
+    with _LOCK:
+        v = _ensure().get("separation_model")
+        return v if isinstance(v, str) and v in _MODEL_CHOICES else _default_separation_model()
+
+
+def set_separation_model(value: str) -> str:
+    choice = (value or "").strip().lower()
+    if choice not in _MODEL_CHOICES:
+        raise ValueError("separation_model must be one of: " + ", ".join(_MODEL_CHOICES))
+    with _LOCK:
+        _ensure()["separation_model"] = choice
         _save()
         return choice

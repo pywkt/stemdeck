@@ -1,4 +1,4 @@
-"""Persistent Roformer separation worker (the [roformer] extra's backend).
+"""Persistent Roformer separation worker (the audio-separator backend).
 
 Run as its own process: `python -m app.pipeline.roformer_worker <device> <model_id>`.
 
@@ -17,10 +17,16 @@ STEM_NAMES, a vocal model produces vocals + other (the whole instrumental). The
 worker writes exactly the stems the registry declares for its model id, and
 collect() picks up whatever landed.
 
+The Roformer checkpoints are torch models: audio-separator runs them on the
+same torch device the Demucs worker uses (CUDA, MPS, or CPU), so no extra
+package is needed for GPU acceleration. onnxruntime is only involved for the
+ONNX vocal-split model, never here.
+
 The `audio_separator` import is deliberately inside the function rather than at
-module scope. It lives behind an optional dependency extra, and a base install
--- which can never select this backend, but does import the package tree -- must
-not fail on it. A missing extra becomes a clean @@ERROR@@ line, not a traceback.
+module scope. The package is platform-gated in pyproject (absent on Intel
+macOS), and an install without it -- which can never select this backend, but
+does import the package tree -- must not fail on it. A missing package becomes
+a clean @@ERROR@@ line, not a traceback.
 
 Protocol:
   - Parent writes one JSON line per job: {"source": "<path>", "job_dir": "<path>"}
@@ -93,8 +99,8 @@ def main() -> None:
         sys.stderr.write(
             "@@ERROR@@"
             + json.dumps(
-                "The Roformer models need the optional 'roformer' dependency extra "
-                f"(uv sync --extra roformer). The import failed with: {e}"
+                "The Roformer models need the audio-separator package, which is "
+                f"not available on this platform. The import failed with: {e}"
             )
             + "\n"
         )

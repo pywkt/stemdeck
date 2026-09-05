@@ -263,7 +263,7 @@ uv run uvicorn app.main:app --reload --timeout-graceful-shutdown 5
 > for the import queue while a browser tab is on the app, so without it
 > Ctrl-C waits for that stream instead of exiting.
 
-#### Optional: GPU acceleration for the Roformer models
+#### Choosing a separation model
 
 StemDeck separates with Demucs `htdemucs_6s` by default. Two higher-quality
 alternatives are selectable under **Settings → Separation model**:
@@ -273,14 +273,8 @@ alternatives are selectable under **Settings → Separation model**:
 - **Vocal Roformer** — two stems only: the cleanest vocal isolation available,
   plus everything else as one instrumental track. Downloads ~900 MB.
 
-Both work out of the box, but run on the CPU, because the `onnxruntime` StemDeck
-ships is the CPU build. On an NVIDIA GPU, install the extra to swap in the GPU
-build:
-
-```sh
-uv sync --extra roformer
-```
-
+Nothing extra to install: both run through the same PyTorch build as Demucs,
+on the same device (CUDA, MPS, or CPU) the `Compute device` setting selects.
 Checkpoints are cached under the app's models directory, so the download happens
 once. `Separation quality` applies to Demucs only — the Roformer models have no
 equivalent setting.

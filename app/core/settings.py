@@ -599,8 +599,8 @@ def set_separation_quality(value: str) -> str:
 # ── separation_model ──
 # Which neural separator produces a job's stems. The choices are the registry
 # in config.py (SEPARATION_MODELS): Demucs by default, plus the Roformer models,
-# which need the optional [roformer] extra and download their checkpoint on
-# first use. Read fresh per job in app/pipeline/separate.py, so a change applies
+# which download their checkpoint on first use.
+# Read fresh per job in app/pipeline/separate.py, so a change applies
 # to the next separation without a restart. STEMDECK_SEPARATION_MODEL seeds the
 # default for env-configured deployments.
 _MODEL_CHOICES = tuple(SEPARATION_MODELS)

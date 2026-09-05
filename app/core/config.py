@@ -260,7 +260,7 @@ DEMUCS_MODEL = os.environ.get("STEMDECK_DEMUCS_MODEL", "htdemucs_6s").strip() or
 # Every selectable separator, keyed by its `separation_model` setting id. Each
 # entry declares:
 #   backend    -- "demucs" (app/pipeline/demucs_worker) or "roformer"
-#                 (app/pipeline/roformer_worker, needs the [roformer] extra)
+#                 (app/pipeline/roformer_worker, via audio-separator)
 #   checkpoint -- what the backend loads: a demucs bag name, or the
 #                 audio-separator catalog filename for roformer
 #   stems      -- the stem names this model produces, in canonical order. NOT

@@ -97,20 +97,6 @@ dev = [
     "pytest-asyncio>=0.24",
     "httpx>=0.27",
 ]
-# GPU execution for the Roformer separation models (Settings -> Separation
-# model). audio-separator itself is already a base dependency -- it backs the
-# on-demand vocal split -- so this extra exists only to swap that feature's
-# CPU-only onnxruntime for the GPU build. Without it the Roformer models still
-# run, on the CPU, which for a 700 MB model is slow enough to matter.
-#
-# onnxruntime and onnxruntime-gpu are the same import under two mutually
-# exclusive distributions, so installing this extra REPLACES the base one:
-#   uv sync --extra roformer
-roformer = [
-    # 1.27+ links CUDA 13 and fails to import against the CUDA 12.x runtime the
-    # torch cu124 pin targets; the 1.19.x line links CUDA 12.
-    "onnxruntime-gpu==1.19.2; sys_platform != 'darwin'",
-]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

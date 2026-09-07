@@ -575,8 +575,9 @@ const en = {
   "settings.device.cpu": "CPU",
   "settings.device.currently": " (currently: {device})",
   "settings.device.notAvailable": " — not available",
+  "settings.separationModel.title": "Separation model",
   "settings.quality.title": "Separation quality",
-  "settings.quality.desc": "Best runs the separator twice with randomized shifts and averages the result — cleaner stems, twice the time.",
+  "settings.quality.desc": "Best runs the separator twice with randomized shifts and averages the result — cleaner stems, twice the time. Applies to the Demucs model only.",
   "settings.quality.standard": "Standard",
   "settings.quality.best": "Best (2× slower)",
 

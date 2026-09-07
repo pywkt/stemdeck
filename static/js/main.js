@@ -4,7 +4,7 @@ import {
   currentJobId, vocalSplitMode, vocalSplitModeReady, setVocalSplitMode,
   setAutoSectionsResetFn,
 } from "./state.js";
-import { STEM_NAMES, syncStemNamesFromAPI } from "./constants.js";
+import { ACTIVE_STEMS, syncStemNamesFromAPI } from "./constants.js";
 import { renderEmptyShell, buildStripStems, downloadCurrentMix, downloadCurrentVideo, downloadAllStemsZip, downloadRegionMix, drawFooterPlaceholder, regionDragPayload, stemRegionDragPayload, prewarmRegionMix } from "./player.js";
 import { wireJobForm, showError } from "./job.js";
 import { initSearch } from "./search.js";
@@ -36,6 +36,25 @@ import { initI18n, applyTranslations, t, plural, onLanguageChange } from "./i18n
 //
 // Persisted across reloads so the next song honors the user's last
 // chosen subset, but a 0-selection state is normalized to all 6.
+// Show only the chips the selected model can actually produce, and drop any
+// selection left over from a model that made more stems than this one does. An
+// emptied selection normalises back to "all of them" so the user is never left
+// with a track that would extract nothing. Called on load, and again whenever
+// the model setting changes.
+export function applyActiveStems() {
+  const active = new Set(ACTIVE_STEMS);
+  for (const btn of document.querySelectorAll(".stem-choice[data-stem]")) {
+    btn.classList.toggle("hidden", !active.has(btn.dataset.stem));
+  }
+  for (const name of [...selectedStems]) {
+    if (!active.has(name)) selectedStems.delete(name);
+  }
+  if (selectedStems.size === 0) for (const n of ACTIVE_STEMS) selectedStems.add(n);
+  saveSelectedStems();
+  refreshStemChoiceVisuals();
+  buildStripStems();
+}
+
 function refreshStemChoiceVisuals() {
   for (const btn of document.querySelectorAll(".stem-choice[data-stem]")) {
     btn.setAttribute(
@@ -137,7 +156,7 @@ function wireAutoSectionsToggle() {
 }
 
 function handleStemChoiceClick(stem) {
-  const allSelected = selectedStems.size === STEM_NAMES.length;
+  const allSelected = selectedStems.size === ACTIVE_STEMS.length;
   if (allSelected) {
     // Default state -> switch to "only this stem".
     selectedStems.clear();
@@ -146,7 +165,7 @@ function handleStemChoiceClick(stem) {
     selectedStems.delete(stem);
     if (selectedStems.size === 0) {
       // Empty out wraps back to "all" so the user is never stuck.
-      for (const n of STEM_NAMES) selectedStems.add(n);
+      for (const n of ACTIVE_STEMS) selectedStems.add(n);
     }
   } else {
     selectedStems.add(stem);
@@ -170,15 +189,15 @@ function wireAllButton() {
   if (!allBtn) return;
 
   function syncAllBtn() {
-    allBtn.setAttribute("aria-pressed", String(selectedStems.size === STEM_NAMES.length));
+    allBtn.setAttribute("aria-pressed", String(selectedStems.size === ACTIVE_STEMS.length));
   }
 
   allBtn.addEventListener("click", () => {
-    const allSelected = selectedStems.size === STEM_NAMES.length;
+    const allSelected = selectedStems.size === ACTIVE_STEMS.length;
     if (allSelected) {
       selectedStems.clear();
     } else {
-      for (const n of STEM_NAMES) selectedStems.add(n);
+      for (const n of ACTIVE_STEMS) selectedStems.add(n);
     }
     saveSelectedStems();
     refreshStemChoiceVisuals();
@@ -203,7 +222,7 @@ function wireAllButton() {
 // static/index.html always ships pre-rendered in English).
 const i18nReady = initI18n().then(() => applyTranslations(document));
 
-syncStemNamesFromAPI().then(() => buildStripStems());
+syncStemNamesFromAPI().then(() => applyActiveStems());
 wireJobForm();
 // Live search on the topbar box. Picking a result fills the box and stops
 // there: extraction is minutes of work, so it stays behind the deliberate

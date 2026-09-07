@@ -11,9 +11,17 @@ export let TRACK_NAMES = ["original", ...STEM_NAMES];
 // swapped in for "vocals", via effectiveStemOrder() below.
 export let EXTRA_STEM_NAMES = ["lead_vocals", "backing_vocals"];
 
+// The stems the CURRENTLY selected separation model can produce. STEM_NAMES
+// stays the canonical superset that colours, labels and ordering are keyed by;
+// this is the subset the import UI offers, so choosing a vocal model (which
+// makes only vocals + a full instrumental) stops offering drums/bass/guitar/
+// piano chips for stems it cannot make. Starts as the full set until
+// /api/config answers.
+export let ACTIVE_STEMS = [...STEM_NAMES];
+
 export async function syncStemNamesFromAPI() {
   try {
-    const res = await fetch("/api/config");
+    const res = await fetch("/api/config", { cache: "no-store" });
     if (!res.ok) return;
     const data = await res.json();
     if (Array.isArray(data.stem_names) && data.stem_names.length > 0) {
@@ -22,6 +30,11 @@ export async function syncStemNamesFromAPI() {
     }
     if (Array.isArray(data.extra_stem_names) && data.extra_stem_names.length > 0) {
       EXTRA_STEM_NAMES = data.extra_stem_names;
+    }
+    if (Array.isArray(data.active_stems) && data.active_stems.length > 0) {
+      // Filtered through STEM_NAMES rather than used as-is, so the chips keep
+      // canonical order whatever order the registry happens to list them in.
+      ACTIVE_STEMS = STEM_NAMES.filter((n) => data.active_stems.includes(n));
     }
   } catch (e) {
     console.warn("[constants] failed to sync stem names from API:", e);
